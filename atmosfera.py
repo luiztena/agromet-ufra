@@ -100,11 +100,36 @@ def obter_condicoes_atmosfericas():
 
 
 def graus_para_cardeal(graus):
-    """Converte graus de direção do vento para pontos cardeais."""
-    direcoes = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
-                'S', 'SSO', 'SO', 'OSO', 'O', 'ONO', 'NO', 'NNO']
+    """Converte graus de direção do vento para pontos cardeais em português."""
+    direcoes = [
+        'N', 'NNE', 'NE', 'ENE',
+        'E', 'ESE', 'SE', 'SSE',
+        'S', 'SSO', 'SO', 'OSO',
+        'O', 'ONO', 'NO', 'NNO'
+    ]
+    
+    traducao = {
+        'N': 'Norte',
+        'NNE': 'Norte-Nordeste',
+        'NE': 'Nordeste',
+        'ENE': 'Leste-Nordeste',
+        'E': 'Leste',
+        'ESE': 'Leste-Sudeste',
+        'SE': 'Sudeste',
+        'SSE': 'Sul-Sudeste',
+        'S': 'Sul',
+        'SSO': 'Sul-Sudoeste',
+        'SO': 'Sudoeste',
+        'OSO': 'Oeste-Sudoeste',
+        'O': 'Oeste',
+        'ONO': 'Oeste-Noroeste',
+        'NO': 'Noroeste',
+        'NNO': 'Norte-Noroeste'
+    }
+    
     indice = round(graus / 22.5) % 16
-    return direcoes[indice]
+    sigla = direcoes[indice]
+    return traducao.get(sigla, sigla)
 
 
 def traduzir_codigo_tempo(codigo):

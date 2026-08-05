@@ -1,11 +1,11 @@
 // Coordenadas da estação (do Flask via data-attributes)
-const body = document.body;
-const LAT = parseFloat(body.dataset.lat);
-const LNG = parseFloat(body.dataset.lng);
-const NOME = body.dataset.nome;
+var body = document.body;
+var LAT = parseFloat(body.dataset.lat);
+var LNG = parseFloat(body.dataset.lng);
+var NOME = body.dataset.nome;
 
 // Inicializar o mapa
-const map = L.map('map').setView([LAT, LNG], 15);
+var map = L.map('map').setView([LAT, LNG], 15);
 
 // Adicionar camada do OpenStreetMap
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -13,96 +13,82 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 // Ícone personalizado para a estação
-const icon = L.divIcon({
+var icon = L.divIcon({
     className: 'custom-icon',
-    html: `<div style="background: #2e86c1; color: white; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 18px; border: 3px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">
-            <i class="fas fa-cloud-sun"></i>
-          </div>`,
+    html: '<div style="background: #2e86c1; color: white; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 18px; border: 3px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.3);"><i class="fas fa-cloud-sun"></i></div>',
     iconSize: [40, 40],
     iconAnchor: [20, 20],
     popupAnchor: [0, -20]
 });
 
 // Variável para o marcador
-let marker = null;
+var marker = null;
 
 // Cache dos dados atmosféricos
-let cacheAtmosfera = null;
-let cacheAtmosferaTimestamp = 0;
+var cacheAtmosfera = null;
+var cacheAtmosferaTimestamp = 0;
 
 // Função para obter dados atmosféricos com cache (10 min)
 async function obterDadosAtmosfera() {
-    const agora = Date.now();
+    var agora = Date.now();
     if (cacheAtmosfera && (agora - cacheAtmosferaTimestamp) < 600000) {
         return cacheAtmosfera;
     }
-    
     try {
-        const resp = await fetch('/api/atmosfera');
+        var resp = await fetch('/api/atmosfera');
         if (resp.ok) {
             cacheAtmosfera = await resp.json();
             cacheAtmosferaTimestamp = agora;
             return cacheAtmosfera;
         }
     } catch (e) {
-        console.log('Dados atmosféricos indisponíveis');
+        console.log('Dados atmosfericos indisponiveis');
     }
     return null;
 }
 
-// Função para buscar a última observação
+// Função para buscar a ultima observacao
 async function buscarUltimaObservacao() {
     try {
-        const response = await fetch('/api/ultima');
+        var response = await fetch('/api/ultima');
         if (!response.ok) throw new Error('Erro ao buscar dados');
-        const dados = await response.json();
+        var dados = await response.json();
         await atualizarMapa(dados);
         atualizarLegenda(dados);
-        atualizarStatus('Sistema consultado às ' + new Date().toLocaleTimeString());
+        atualizarStatus('Sistema consultado as ' + new Date().toLocaleTimeString());
         document.getElementById('loading').style.display = 'none';
     } catch (error) {
         console.error('Erro:', error);
-        document.getElementById('status-texto').textContent = '⚠️ Erro ao carregar dados';
-        document.getElementById('loading').innerHTML = `
-            <i class="fas fa-exclamation-triangle" style="color: #e74c3c;"></i>
-            <p>Erro ao carregar dados. Tente novamente.</p>
-            <button onclick="recarregar()" style="margin-top:10px; padding:8px 20px; background:#2e86c1; color:white; border:none; border-radius:5px; cursor:pointer;">
-                <i class="fas fa-sync"></i> Recarregar
-            </button>
-        `;
+        document.getElementById('status-texto').textContent = 'Erro ao carregar dados';
+        document.getElementById('loading').innerHTML = '<i class="fas fa-exclamation-triangle" style="color: #e74c3c;"></i><p>Erro ao carregar dados. Tente novamente.</p><button onclick="recarregar()" style="margin-top:10px; padding:8px 20px; background:#2e86c1; color:white; border:none; border-radius:5px; cursor:pointer;"><i class="fas fa-sync"></i> Recarregar</button>';
     }
 }
 
-// Função para buscar dados de uma data específica
+// Funcao para buscar dados de uma data especifica
 async function buscarPorData() {
-    const data = document.getElementById('data-escolhida').value;
+    var data = document.getElementById('data-escolhida').value;
     if (!data) {
         alert('Selecione uma data!');
         return;
     }
-    
     document.getElementById('loading').style.display = 'block';
-    document.getElementById('loading').innerHTML = `
-        <i class="fas fa-spinner"></i>
-        <p>Buscando dados de ${formatarData(data)}...</p>
-    `;
-    
+    document.getElementById('loading').innerHTML = '<i class="fas fa-spinner"></i><p>Buscando dados de ' + formatarData(data) + '...</p>';
     try {
-        const response = await fetch(`/api/data/${data}`);
+        var response = await fetch('/api/data/' + data);
         if (!response.ok) {
             if (response.status === 404) {
-                alert('Sem dados para esta data. Verifique se houve observação neste dia.');
+                alert('Sem dados para esta data.');
             }
             throw new Error('Erro ao buscar dados');
         }
-        const dados = await response.json();
+        var dados = await response.json();
         await atualizarMapa(dados);
         atualizarLegenda(dados);
         atualizarStatus('Mostrando dados de: ' + formatarData(data));
         document.getElementById('loading').style.display = 'none';
     } catch (error) {
         console.error('Erro:', error);
-        document.getElementById('status-texto').textContent = '⚠️ Data não encontrada';
+        document.getElementById('status-texto').textContent = 'Data nao encontrada';
         document.getElementById('loading').style.display = 'none';
     }
 }
@@ -110,98 +96,135 @@ async function buscarPorData() {
 // Atualizar dados direto do ISARH/UFRA
 async function atualizarDadosEstacao() {
     document.getElementById('loading').style.display = 'block';
-    document.getElementById('loading').innerHTML = `
-        <i class="fas fa-spinner"></i>
-        <p>Atualizando dados do ISARH/UFRA...</p>
-    `;
-    
+    document.getElementById('loading').innerHTML = '<i class="fas fa-spinner"></i><p>Atualizando dados do ISARH/UFRA...</p>';
     try {
-        const response = await fetch('/api/atualizar');
-        const resultado = await response.json();
-        
+        var response = await fetch('/api/atualizar');
+        var resultado = await response.json();
         if (resultado.status === 'sucesso') {
-            alert(`✅ Dados atualizados!\n\n📅 Data: ${resultado.data}\n🌡️ Temperatura: ${resultado.temperatura}°C\n💧 Umidade: ${resultado.umidade}%\n📊 Total de registros: ${resultado.total_registros}`);
-            cacheAtmosfera = null; // Limpa cache
+            alert('Dados atualizados!\n\nData: ' + resultado.data + '\nTemperatura: ' + resultado.temperatura + ' C\nUmidade: ' + resultado.umidade + '%\nTotal de registros: ' + resultado.total_registros);
+            cacheAtmosfera = null;
             buscarUltimaObservacao();
         } else {
-            alert('❌ Erro: ' + (resultado.mensagem || 'Falha na atualização'));
+            alert('Erro: ' + (resultado.mensagem || 'Falha na atualizacao'));
         }
     } catch (error) {
         console.error('Erro:', error);
-        alert('❌ Erro ao conectar com o servidor');
+        alert('Erro ao conectar com o servidor');
     }
-    
     document.getElementById('loading').style.display = 'none';
 }
 
-// Voltar para a última observação com dados
+// Voltar para a ultima observacao com dados
 function voltarUltima() {
     document.getElementById('data-escolhida').value = '';
     document.getElementById('loading').style.display = 'block';
-    document.getElementById('loading').innerHTML = `
-        <i class="fas fa-spinner"></i>
-        <p>Carregando última observação...</p>
-    `;
+    document.getElementById('loading').innerHTML = '<i class="fas fa-spinner"></i><p>Carregando ultima observacao...</p>';
     buscarUltimaObservacao();
 }
 
-// Formatar data para exibição
+// Formatar data para exibicao
 function formatarData(data) {
-    const partes = data.split('-');
-    return `${partes[2]}/${partes[1]}/${partes[0]}`;
+    var partes = data.split('-');
+    return partes[2] + '/' + partes[1] + '/' + partes[0];
+}
+
+// Funcoes auxiliares de sensacao termica
+function calcularSensacaoLocal(temp, umidade) {
+    if (temp === '--' || umidade === '--') return '--';
+    var T = parseFloat(temp);
+    var U = parseFloat(umidade);
+    if (T >= 27) {
+        var Tf = (T * 9/5) + 32;
+        var hi = -42.379 + 2.04901523*Tf + 10.14333127*U - 0.22475541*Tf*U - 0.00683783*Tf*Tf - 0.05481717*U*U + 0.00122874*Tf*Tf*U + 0.00085282*Tf*U*U - 0.00000199*Tf*Tf*U*U;
+        var sensacao = (hi - 32) * 5/9;
+        return Math.round(sensacao * 10) / 10;
+    }
+    return T;
 }
 
 async function atualizarMapa(dados) {
     if (!dados) {
-        console.warn('Dados não recebidos');
+        console.warn('Dados nao recebidos');
         return;
     }
-
-    // Buscar dados atmosféricos do ECMWF
-    const dadosAtmosfera = await obterDadosAtmosfera();
-
-    const temp09 = dados.temperatura_09h || '--';
-    const umid09 = dados.umidade_09h || '--';
+    var dadosAtmosfera = await obterDadosAtmosfera();
     
-    // Vento: ISARH primeiro, depois ECMWF
-    let vento09 = dados.vento_09h;
-    if (!vento09 && dadosAtmosfera && dadosAtmosfera.status === 'sucesso') {
-        vento09 = dadosAtmosfera.vento.velocidade + ' m/s (' + dadosAtmosfera.vento.direcao_cardeal + ')';
+    // DADOS DA ESTACAO (ISARH - 09:00)
+    var temp09 = dados.temperatura_09h || '--';
+    var umid09 = dados.umidade_09h || '--';
+    var precip09 = dados.precipitacao || '--';
+    var tempMin = dados.temp_min || '--';
+    var tempMax = dados.temp_max || '--';
+    var sensacao09 = dados.sensacao_termica || '';
+    var obs = dados.observadores || 'Membros do Grupo ISPAAm';
+    var dataObs = dados.data || '--';
+    
+    // DADOS ATUAIS (ECMWF)
+    var tempAtual = '--';
+    var umidAtual = '--';
+    var sensacaoAtual = '--';
+    var ceuAtual = '--';
+    var ventoAtual = '--';
+    var chuvaAtual = '--';
+    var precipAtual = '--';
+    
+    if (dadosAtmosfera && dadosAtmosfera.status === 'sucesso') {
+        tempAtual = dadosAtmosfera.temperatura.atual || '--';
+        umidAtual = dadosAtmosfera.temperatura.umidade || '--';
+        ceuAtual = dadosAtmosfera.ceu.descricao || '--';
+        ventoAtual = dadosAtmosfera.vento.velocidade + ' m/s (' + dadosAtmosfera.vento.direcao_cardeal + ')';
+        chuvaAtual = dadosAtmosfera.chuva.chovendo ? 'Chovendo' : 'Sem chuva';
+        precipAtual = dadosAtmosfera.chuva.precipitacao_mm + ' mm';
+        if (tempAtual !== '--' && umidAtual !== '--') {
+            sensacaoAtual = calcularSensacaoLocal(tempAtual, umidAtual);
+        }
     }
-    vento09 = vento09 || '--';
-    
-    // Precipitação: ISARH primeiro, depois ECMWF
-    let precip = dados.precipitacao;
-    if (!precip && dadosAtmosfera && dadosAtmosfera.status === 'sucesso') {
-        precip = dadosAtmosfera.chuva.precipitacao_mm + ' mm';
-    }
-    precip = precip || '--';
-    
-    const tempMin = dados.temp_min || '--';
-    const tempMax = dados.temp_max || '--';
-    const obs = dados.observadores || 'Membros do Grupo ISPAAm';
-    
-    // Dados extras da atmosfera
-    const ceu = (dadosAtmosfera && dadosAtmosfera.status === 'sucesso') ? dadosAtmosfera.ceu.descricao : '';
-    const fonte = (dadosAtmosfera && dadosAtmosfera.status === 'sucesso') ? '📡 ISARH + 🌍 ECMWF' : '📡 ISARH';
 
-    const popupContent = `
-        <div style="text-align: center;">
-            <div style="font-size: 16px; font-weight: bold; color: #1a5276;">${NOME}</div>
-            <div class="popup-temp">${temp09}°C</div>
-            <div style="font-size: 13px; color: #666; margin-bottom: 8px;">${dados.data || 'Data não disponível'}</div>
-            <div class="popup-info">
-                <div><span class="label">🌡️ Mín/Máx:</span> <span class="value">${tempMin}°C / ${tempMax}°C</span></div>
-                <div><span class="label">💧 Umidade:</span> <span class="value">${umid09}%</span></div>
-                <div><span class="label">💨 Vento:</span> <span class="value">${vento09}</span></div>
-                <div><span class="label">🌧️ Precip.:</span> <span class="value">${precip}</span></div>
-                ${ceu ? `<div style="grid-column: 1 / -1;"><span class="label">☀️ Céu:</span> <span class="value">${ceu}</span></div>` : ''}
-            </div>
-            <div style="font-size: 10px; color: #999; margin-top: 8px; border-top: 1px solid #eee; padding-top: 5px;">
-                ${obs} • ${fonte}
-            </div>
-        </div>
-    `;
+    var popupContent = '' +
+        '<div style="font-family: Segoe UI, sans-serif; min-width: 260px; padding: 4px;">' +
+        
+        // TITULO
+        '<div style="text-align: center; font-size: 15px; font-weight: 700; color: #1a3a5c; margin-bottom: 12px; letter-spacing: 0.5px;">' + NOME + '</div>' +
+        
+        // ============ ESTACAO (09:00) ============
+        '<div style="background: linear-gradient(135deg, #e8f4fd, #d4eafc); border-radius: 10px; padding: 14px; margin-bottom: 10px; border-left: 4px solid #2e86c1;">' +
+        '<div style="font-size: 11px; font-weight: 700; color: #1a5276; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px;">Estacao &bull; 09:00</div>' +
+        '<div style="font-size: 12px; font-weight: 700; color: #1a5276; margin-bottom: 8px;">' + dataObs + '</div>' +
+        '<div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px;">' +
+        '<span style="font-size: 28px; font-weight: 700; color: #c0392b;">' + temp09 + '</span>' +
+        '<span style="font-size: 14px; color: #555;">C</span>' +
+        '</div>' +
+        (sensacao09 ? '<div style="font-size: 13px; color: #e67e22; margin-bottom: 8px; font-weight: 500;">Sensacao: ' + sensacao09 + ' C</div>' : '') +
+        '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 12px;">' +
+        '<div><span style="color: #777;">Umidade:</span> <span style="font-weight: 600; color: #333;">' + umid09 + '%</span></div>' +
+        '<div><span style="color: #777;">Vento:</span> <span style="font-weight: 600; color: #333;">--</span></div>' +
+        '<div><span style="color: #777;">Precip.:</span> <span style="font-weight: 600; color: #333;">' + precip09 + ' mm</span></div>' +
+        '<div><span style="color: #777;">Min/Max:</span> <span style="font-weight: 600; color: #333;">' + tempMin + '/' + tempMax + ' C</span></div>' +
+        '</div>' +
+        '<div style="font-size: 9px; color: #999; margin-top: 8px; text-align: right;"><b>ISARH</b></div>' +
+        '<div style="font-size: 10px; color: #777; margin-top: 4px; text-align: right; font-weight: 600;">' + obs + '</div>' +
+        '</div>' +
+        
+        // ============ AGORA (ECMWF) ============
+        (dadosAtmosfera && dadosAtmosfera.status === 'sucesso' ? 
+        '<div style="background: linear-gradient(135deg, #f0e8f8, #e2d4f0); border-radius: 10px; padding: 14px; border-left: 4px solid #7b4fa0;">' +
+        '<div style="font-size: 11px; font-weight: 700; color: #5a3478; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">Agora &bull; Modelo</div>' +
+        '<div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px;">' +
+        '<span style="font-size: 28px; font-weight: 700; color: #6c3fa0;">' + tempAtual + '</span>' +
+        '<span style="font-size: 14px; color: #555;">C</span>' +
+        '</div>' +
+        (sensacaoAtual !== '--' ? '<div style="font-size: 13px; color: #e67e22; margin-bottom: 8px; font-weight: 500;">Sensacao: ' + sensacaoAtual + ' C</div>' : '') +
+        '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 12px;">' +
+        '<div><span style="color: #777;">Umidade:</span> <span style="font-weight: 600; color: #333;">' + umidAtual + '%</span></div>' +
+        '<div><span style="color: #777;">Vento:</span> <span style="font-weight: 600; color: #333;">' + ventoAtual + '</span></div>' +
+        '<div><span style="color: #777;">Precip.:</span> <span style="font-weight: 600; color: #333;">' + precipAtual + '</span></div>' +
+        '<div><span style="color: #777;">Ceu:</span> <span style="font-weight: 600; color: #333;">' + ceuAtual + '</span></div>' +
+        '</div>' +
+        '<div style="font-size: 12px; margin-top: 6px; font-weight: 500; color: #555;">' + chuvaAtual + '</div>' +
+        '<div style="font-size: 9px; color: #999; margin-top: 6px; text-align: right;"><b>ECMWF</b></div>' +
+        '</div>' : '') +
+        
+        '</div>';
 
     if (marker) {
         marker.setLatLng([LAT, LNG]);
@@ -217,27 +240,15 @@ async function atualizarMapa(dados) {
 async function atualizarLegenda(dados) {
     document.getElementById('leg-temp').textContent = dados.temperatura_09h || '--';
     document.getElementById('leg-umidade').textContent = dados.umidade_09h || '--';
-    
-    // Vento: ISARH ou ECMWF
-    let vento = dados.vento_09h;
-    if (!vento) {
-        const atm = await obterDadosAtmosfera();
-        if (atm && atm.status === 'sucesso') {
-            vento = atm.vento.velocidade + ' (' + atm.vento.direcao_cardeal + ')';
-        }
-    }
-    document.getElementById('leg-vento').textContent = vento || '--';
-    
-    // Precipitação: ISARH ou ECMWF
-    let precip = dados.precipitacao;
+    document.getElementById('leg-vento').textContent = '--';
+    var precip = dados.precipitacao;
     if (!precip) {
-        const atm = await obterDadosAtmosfera();
+        var atm = await obterDadosAtmosfera();
         if (atm && atm.status === 'sucesso') {
             precip = atm.chuva.precipitacao_mm;
         }
     }
     document.getElementById('leg-precip').textContent = precip || '--';
-    
     document.getElementById('leg-data').textContent = dados.data || '--';
 }
 
@@ -248,18 +259,11 @@ function atualizarStatus(texto) {
 function recarregar() {
     cacheAtmosfera = null;
     document.getElementById('loading').style.display = 'block';
-    document.getElementById('loading').innerHTML = `
-        <i class="fas fa-spinner"></i>
-        <p>Recarregando dados...</p>
-    `;
+    document.getElementById('loading').innerHTML = '<i class="fas fa-spinner"></i><p>Recarregando dados...</p>';
     buscarUltimaObservacao();
 }
 
-// Atualizar a cada 5 minutos (300000 ms)
 setInterval(buscarUltimaObservacao, 300000);
-
-// Iniciar
 buscarUltimaObservacao();
-
-console.log('🌦️ Aplicação meteorológica iniciada!');
-console.log(`📍 Estação: ${NOME} (${LAT}, ${LNG})`);
+console.log('Aplicacao meteorologica iniciada!');
+console.log('Estacao: ' + NOME + ' (' + LAT + ', ' + LNG + ')');
