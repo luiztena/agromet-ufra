@@ -8,6 +8,7 @@ from flask_cors import CORS
 from scraper import atualizar_dados as atualizar_dados_scraper
 from atmosfera import obter_condicoes_atmosfericas
 from sensacao import calcular_sensacao_termica, classificar_sensacao
+from balanco_energia import calcular_balanco_completo
 
 # ---------------------------------------------------------------------------
 # Configuração da aplicação
@@ -152,6 +153,42 @@ def info_estacao():
 @app.route("/api/atmosfera")
 def condicoes_atmosfericas():
     return jsonify(obter_condicoes_atmosfericas())
+
+
+@app.route("/api/balanco/<data>")
+def balanco_energia(data):
+    """Retorna o balanço de energia para uma data específica."""
+    dados = carregar_dados()
+    if not dados:
+        return jsonify({"erro": "Nenhum dado disponível"}), 404
+
+    # Busca código WMO do ECMWF para classificação consistente do céu
+    weather_code = None
+    try:
+        atmosfera = obter_condicoes_atmosfericas()
+        if atmosfera.get("status") == "sucesso":
+            weather_code = atmosfera["ceu"]["codigo_wmo"]
+    except:
+        pass
+
+    for registro in dados:
+        if registro.get("date") == data:
+            temp = registro.get("temp_09h")
+            umidade = registro.get("humidity_09h")
+            if temp is not None and umidade is not None:
+                resultado = calcular_balanco_completo(
+                    temperatura=temp,
+                    umidade=umidade,
+                    data=data,
+                    latitude=LATITUDE,
+                    Rs_medido=None,
+                    weather_code=weather_code
+                )
+                return jsonify(resultado)
+            else:
+                return jsonify({"erro": "Dados insuficientes para o cálculo"}), 400
+
+    return jsonify({"erro": "Data não encontrada"}), 404
 
 
 @app.route("/api/resumo")

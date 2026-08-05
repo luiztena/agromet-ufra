@@ -54,7 +54,6 @@ async function buscarUltimaObservacao() {
         if (!response.ok) throw new Error('Erro ao buscar dados');
         var dados = await response.json();
         await atualizarMapa(dados);
-        atualizarLegenda(dados);
         atualizarStatus('Sistema consultado as ' + new Date().toLocaleTimeString());
         document.getElementById('loading').style.display = 'none';
     } catch (error) {
@@ -83,7 +82,6 @@ async function buscarPorData() {
         }
         var dados = await response.json();
         await atualizarMapa(dados);
-        atualizarLegenda(dados);
         atualizarStatus('Mostrando dados de: ' + formatarData(data));
         document.getElementById('loading').style.display = 'none';
     } catch (error) {
@@ -126,6 +124,23 @@ function voltarUltima() {
 function formatarData(data) {
     var partes = data.split('-');
     return partes[2] + '/' + partes[1] + '/' + partes[0];
+}
+
+// Formatar hora atual como HH:MM
+function agoraFormatado() {
+    var d = new Date();
+    var hh = String(d.getHours()).padStart(2, '0');
+    var mm = String(d.getMinutes()).padStart(2, '0');
+    return hh + ':' + mm;
+}
+
+// Formatar a data de hoje como DD/MM/AAAA
+function hojeFormatado() {
+    var d = new Date();
+    var dd = String(d.getDate()).padStart(2, '0');
+    var mm = String(d.getMonth() + 1).padStart(2, '0');
+    var yyyy = d.getFullYear();
+    return dd + '/' + mm + '/' + yyyy;
 }
 
 // Funcoes auxiliares de sensacao termica
@@ -180,49 +195,83 @@ async function atualizarMapa(dados) {
         }
     }
 
+    // MODULO AGROMETEOROLOGICO
+    var balancoEnergia = null;
+    try {
+        var respBalanco = await fetch('/api/balanco/' + (dados.data || dataObs));
+        if (respBalanco.ok) {
+            balancoEnergia = await respBalanco.json();
+        }
+    } catch (e) {
+        console.log('Modulo agrometeorologico indisponivel');
+    }
+
     var popupContent = '' +
-        '<div style="font-family: Segoe UI, sans-serif; min-width: 260px; padding: 4px;">' +
+        '<div style="font-family: Segoe UI, sans-serif; min-width: 680px; padding: 4px;">' +
         
         // TITULO
-        '<div style="text-align: center; font-size: 15px; font-weight: 700; color: #1a3a5c; margin-bottom: 12px; letter-spacing: 0.5px;">' + NOME + '</div>' +
+        '<div style="text-align: center; font-size: 15px; font-weight: 700; color: #1a3a5c; margin-bottom: 10px; letter-spacing: 0.5px;">' + NOME + '</div>' +
         
-        // ============ ESTACAO (09:00) ============
-        '<div style="background: linear-gradient(135deg, #e8f4fd, #d4eafc); border-radius: 10px; padding: 14px; margin-bottom: 10px; border-left: 4px solid #2e86c1;">' +
-        '<div style="font-size: 11px; font-weight: 700; color: #1a5276; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px;">Estacao &bull; 09:00</div>' +
-        '<div style="font-size: 12px; font-weight: 700; color: #1a5276; margin-bottom: 8px;">' + dataObs + '</div>' +
-        '<div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px;">' +
-        '<span style="font-size: 28px; font-weight: 700; color: #c0392b;">' + temp09 + '</span>' +
-        '<span style="font-size: 14px; color: #555;">C</span>' +
+        // ============ CARDS LADO A LADO (TODOS) ============
+        '<div style="display: flex; gap: 8px; align-items: stretch;">' +
+        
+        // ESTACAO (09:00)
+        '<div style="flex: 1; background: linear-gradient(135deg, #e8f4fd, #d4eafc); border-radius: 10px; padding: 12px; border-top: 4px solid #2e86c1;">' +
+        '<div style="font-size: 10px; font-weight: 700; color: #1a5276; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px;">Estacao &bull; 09:00</div>' +
+        '<div style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px;">' +
+        '<span style="font-size: 26px; font-weight: 700; color: #c0392b;">' + temp09 + '</span>' +
+        '<span style="font-size: 23px; color: #c0392b;">°C</span>' +
         '</div>' +
-        (sensacao09 ? '<div style="font-size: 13px; color: #e67e22; margin-bottom: 8px; font-weight: 500;">Sensacao: ' + sensacao09 + ' C</div>' : '') +
-        '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 12px;">' +
+        '<div style="font-size: 11px; color: #666; margin-bottom: 4px;">' + (dataObs !== '--' ? formatarData(dataObs) : dataObs) + '</div>' +
+        (sensacao09 ? '<div style="font-size: 12px; color: #e67e22; margin-bottom: 6px; font-weight: 500;">Sensacao: ' + sensacao09 + ' C</div>' : '') +
+        '<div style="font-size: 11px; line-height: 1.6;">' +
         '<div><span style="color: #777;">Umidade:</span> <span style="font-weight: 600; color: #333;">' + umid09 + '%</span></div>' +
         '<div><span style="color: #777;">Vento:</span> <span style="font-weight: 600; color: #333;">--</span></div>' +
         '<div><span style="color: #777;">Precip.:</span> <span style="font-weight: 600; color: #333;">' + precip09 + ' mm</span></div>' +
         '<div><span style="color: #777;">Min/Max:</span> <span style="font-weight: 600; color: #333;">' + tempMin + '/' + tempMax + ' C</span></div>' +
         '</div>' +
-        '<div style="font-size: 9px; color: #999; margin-top: 8px; text-align: right;"><b>ISARH</b></div>' +
-        '<div style="font-size: 10px; color: #777; margin-top: 4px; text-align: right; font-weight: 600;">' + obs + '</div>' +
+        '<div style="font-size: 8px; color: #999; margin-top: 6px; text-align: right;"><b>ISARH</b></div>' +
+        '<div style="font-size: 9px; color: #777; margin-top: 2px; text-align: right; font-weight: 600;">' + obs + '</div>' +
         '</div>' +
         
-        // ============ AGORA (ECMWF) ============
+        // AGORA (ECMWF)
         (dadosAtmosfera && dadosAtmosfera.status === 'sucesso' ? 
-        '<div style="background: linear-gradient(135deg, #f0e8f8, #e2d4f0); border-radius: 10px; padding: 14px; border-left: 4px solid #7b4fa0;">' +
-        '<div style="font-size: 11px; font-weight: 700; color: #5a3478; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">Agora &bull; Modelo</div>' +
-        '<div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px;">' +
-        '<span style="font-size: 28px; font-weight: 700; color: #6c3fa0;">' + tempAtual + '</span>' +
-        '<span style="font-size: 14px; color: #555;">C</span>' +
+        '<div style="flex: 1; background: linear-gradient(135deg, #f0e8f8, #e2d4f0); border-radius: 10px; padding: 12px; border-top: 4px solid #7b4fa0;">' +
+        '<div style="font-size: 10px; font-weight: 700; color: #5a3478; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px;">Agora &bull; ' + agoraFormatado() + '</div>' +
+        '<div style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px;">' +
+        '<span style="font-size: 26px; font-weight: 700; color: #6c3fa0;">' + tempAtual + '</span>' +
+        '<span style="font-size: 23px; color: #6c3fa0;">°C</span>' +
         '</div>' +
-        (sensacaoAtual !== '--' ? '<div style="font-size: 13px; color: #e67e22; margin-bottom: 8px; font-weight: 500;">Sensacao: ' + sensacaoAtual + ' C</div>' : '') +
-        '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 12px;">' +
+        '<div style="font-size: 11px; color: #666; margin-bottom: 4px;">' + hojeFormatado() + '</div>' +
+        (sensacaoAtual !== '--' ? '<div style="font-size: 12px; color: #e67e22; margin-bottom: 6px; font-weight: 500;">Sensacao: ' + sensacaoAtual + ' C</div>' : '') +
+        '<div style="font-size: 11px; line-height: 1.6;">' +
         '<div><span style="color: #777;">Umidade:</span> <span style="font-weight: 600; color: #333;">' + umidAtual + '%</span></div>' +
         '<div><span style="color: #777;">Vento:</span> <span style="font-weight: 600; color: #333;">' + ventoAtual + '</span></div>' +
         '<div><span style="color: #777;">Precip.:</span> <span style="font-weight: 600; color: #333;">' + precipAtual + '</span></div>' +
         '<div><span style="color: #777;">Ceu:</span> <span style="font-weight: 600; color: #333;">' + ceuAtual + '</span></div>' +
         '</div>' +
-        '<div style="font-size: 12px; margin-top: 6px; font-weight: 500; color: #555;">' + chuvaAtual + '</div>' +
-        '<div style="font-size: 9px; color: #999; margin-top: 6px; text-align: right;"><b>ECMWF</b></div>' +
+        '<div style="font-size: 11px; margin-top: 4px; font-weight: 500; color: #555;">' + chuvaAtual + '</div>' +
+        '<div style="font-size: 8px; color: #999; margin-top: 6px; text-align: right;"><b>ECMWF</b></div>' +
         '</div>' : '') +
+        
+        // MODULO AGROMETEOROLOGICO
+        (balancoEnergia && !balancoEnergia.erro ? 
+        '<div style="flex: 1; background: linear-gradient(135deg, #e8f8e8, #d4f0d4); border-radius: 10px; padding: 12px; border-top: 4px solid #27ae60;">' +
+        '<div style="font-size: 10px; font-weight: 700; color: #1e7e34; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">Modulo Agrometeorologico</div>' +
+        '<div style="display: grid; grid-template-columns: auto 1fr; gap: 2px 6px; font-size: 11px;">' +
+        '<div><span style="color: #777;">Ra (Q0):</span></div> <div><span style="font-weight: 600; color: #333; white-space: nowrap;">' + balancoEnergia.Ra_Q0.valor + ' MJ/m²/dia</span></div>' +
+        '<div><span style="color: #777;">Rs:</span></div> <div><span style="font-weight: 600; color: #333; white-space: nowrap;">' + balancoEnergia.Rs.valor + ' MJ/m²/dia</span></div>' +
+        '<div><span style="color: #777;">PAR:</span></div> <div><span style="font-weight: 600; color: #333; white-space: nowrap;">' + balancoEnergia.PAR.valor + ' MJ/m²/dia</span></div>' +
+        '<div><span style="color: #777;">Rn:</span></div> <div><span style="font-weight: 600; color: #333; white-space: nowrap;">' + balancoEnergia.Rn.valor + ' MJ/m²/dia *</span></div>' +
+        '<div><span style="color: #777;">Kt:</span></div> <div><span style="font-weight: 600; color: #333; white-space: nowrap;">' + balancoEnergia.Kt.valor + '</span></div>' +
+        '<div><span style="color: #777;">Fotoperiodo:</span></div> <div><span style="font-weight: 600; color: #333; white-space: nowrap;">' + balancoEnergia.fotoperiodo.valor + '</span></div>' +
+        '<div><span style="color: #777;">Graus-dia:</span></div> <div><span style="font-weight: 600; color: #333; white-space: nowrap;">' + balancoEnergia.graus_dia.valor + ' °C (Tb=' + balancoEnergia.graus_dia.Tbase + ' °C)</span></div>' +
+        '<div><span style="color: #777;">ETo:</span></div> <div><span style="font-weight: 600; color: #333; white-space: nowrap;">' + balancoEnergia.ETo.valor + ' mm/dia</span></div>' +
+        '</div>' +
+        '<div style="font-size: 8px; color: #999; margin-top: 4px; text-align: right;">* Rn estimado para fins didaticos</div>' +
+        '</div>' : '') +
+        
+        '</div>' +  // FIM DOS CARDS LADO A LADO
         
         '</div>';
 
@@ -235,21 +284,6 @@ async function atualizarMapa(dados) {
             .bindPopup(popupContent)
             .openPopup();
     }
-}
-
-async function atualizarLegenda(dados) {
-    document.getElementById('leg-temp').textContent = dados.temperatura_09h || '--';
-    document.getElementById('leg-umidade').textContent = dados.umidade_09h || '--';
-    document.getElementById('leg-vento').textContent = '--';
-    var precip = dados.precipitacao;
-    if (!precip) {
-        var atm = await obterDadosAtmosfera();
-        if (atm && atm.status === 'sucesso') {
-            precip = atm.chuva.precipitacao_mm;
-        }
-    }
-    document.getElementById('leg-precip').textContent = precip || '--';
-    document.getElementById('leg-data').textContent = dados.data || '--';
 }
 
 function atualizarStatus(texto) {
