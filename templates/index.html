@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌦️ Estação Meteorológica - UFRA</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Font Awesome para ícones -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    
+    <!-- CSS Personalizado -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body data-lat="{{ lat }}" data-lng="{{ lng }}" data-nome="{{ nome_estacao }}">
+
+    <div id="header">
+        <div style="display: flex; flex-direction: column; gap: 5px;">
+            <h1><i class="fas fa-cloud-sun"></i> Estação Meteorológica</h1>
+            <span style="font-size: 12px; opacity: 0.9; margin-left: 32px;">
+                Docente Responsável: Paulo Jorge de O. P. de Souza | Observadores: Membros do Grupo ISPAAm
+            <br> Desenvolvido por Luiz Nogueira © 2026</span>
+        </div>
+
+        <div class="status">
+            <i class="fas fa-circle" style="color: #2ecc71;"></i>
+            <span id="status-texto">Carregando...</span>
+        </div>
+    </div>
+
+    <div id="map">
+        
+        <div class="loading" id="loading">
+            <i class="fas fa-spinner"></i>
+            <p>Carregando dados meteorológicos...</p>
+        </div>
+
+        <!-- Seletor de Data -->
+        <div id="seletor-data">
+            <label for="data-escolhida"><i class="far fa-calendar-alt"></i></label>
+            <input type="date" id="data-escolhida" min="2019-12-17" max="2026-06-04">
+            <button onclick="buscarPorData()">
+                <i class="fas fa-search"></i> Buscar
+            </button>
+            <button onclick="voltarUltima()" style="background: #27ae60;">
+                <i class="fas fa-sync"></i> Atual
+            </button>
+            <button onclick="atualizarDadosEstacao()" style="background: #e67e22;">
+                <i class="fas fa-cloud-download-alt"></i> ISARH
+            </button>
+        </div>
+        
+        <div id="legenda">
+            <div class="dado"><i class="fas fa-thermometer-half"></i> Temperatura: <span id="leg-temp">--</span>°C</div>
+            <div class="dado"><i class="fas fa-tint"></i> Umidade: <span id="leg-umidade">--</span>%</div>
+            <div class="dado"><i class="fas fa-wind"></i> Vento: <span id="leg-vento">--</span> m/s</div>
+            <div class="dado"><i class="fas fa-cloud-rain"></i> Precipitação: <span id="leg-precip">--</span> mm</div>
+            <div class="dado" style="font-size:11px; color:#888; margin-top:5px;">
+                <i class="far fa-calendar-alt"></i> <span id="leg-data">--</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- JavaScript da Aplicação -->
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+
+</body>
+</html>

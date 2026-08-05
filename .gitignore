@@ -1,0 +1,16 @@
+# Ambiente virtual
+venv/
+venv_*/
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Editor
+.vscode/
+
+# Sistema
+*.log
+.DS_Store
+Thumbs.db
