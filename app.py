@@ -162,27 +162,22 @@ def balanco_energia(data):
     if not dados:
         return jsonify({"erro": "Nenhum dado disponível"}), 404
 
-    # Busca código WMO do ECMWF para classificação consistente do céu
-    weather_code = None
-    try:
-        atmosfera = obter_condicoes_atmosfericas()
-        if atmosfera.get("status") == "sucesso":
-            weather_code = atmosfera["ceu"]["codigo_wmo"]
-    except:
-        pass
-
     for registro in dados:
         if registro.get("date") == data:
             temp = registro.get("temp_09h")
+            temp_max = registro.get("temp_max_previous_day") or registro.get("temp_max") or temp
+            temp_min = registro.get("temp_min")
             umidade = registro.get("humidity_09h")
-            if temp is not None and umidade is not None:
+            
+            if temp is not None and umidade is not None and temp_max is not None and temp_min is not None:
                 resultado = calcular_balanco_completo(
                     temperatura=temp,
+                    temp_max=temp_max,
+                    temp_min=temp_min,
                     umidade=umidade,
                     data=data,
                     latitude=LATITUDE,
-                    Rs_medido=None,
-                    weather_code=weather_code
+                    Rs_medido=None
                 )
                 return jsonify(resultado)
             else:

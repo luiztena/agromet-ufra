@@ -30,43 +30,19 @@ def calcular_Q0_Ra(latitude, data):
     return round(Ra, 1)
 
 
-def traduzir_codigo_wmo(codigo):
-    """Traduz códigos WMO para descrição em português."""
-    codigos = {
-        0: "Ceu limpo",
-        1: "Parcialmente nublado",
-        2: "Nublado",
-        3: "Encoberto",
-        45: "Nevoeiro",
-        48: "Nevoeiro com geada",
-        51: "Garoa leve",
-        53: "Garoa moderada",
-        55: "Garoa intensa",
-        61: "Chuva fraca",
-        63: "Chuva moderada",
-        65: "Chuva forte",
-        80: "Pancadas de chuva",
-        81: "Pancadas moderadas",
-        82: "Pancadas fortes",
-        95: "Trovoada",
-        96: "Trovoada com granizo",
-        99: "Trovoada severa"
-    }
-    return codigos.get(codigo, "Indefinido")
-
-
-def calcular_balanco_completo(temperatura, umidade, data, latitude, Tbase=10, Rs_medido=None, weather_code=None):
+def calcular_balanco_completo(temperatura, temp_max, temp_min, umidade, data, latitude, Tbase=10, Rs_medido=None):
     """
     Calcula todos os parametros agrometeorologicos.
     
     Parametros:
-    - temperatura: float (C)
+    - temperatura: float (C) - temperatura media ou representativa (ex: T09h)
+    - temp_max: float (C) - temperatura maxima do dia
+    - temp_min: float (C) - temperatura minima do dia
     - umidade: float (%)
     - data: string (YYYY-MM-DD)
     - latitude: float
     - Tbase: float (temperatura base para graus-dia, default 10C)
     - Rs_medido: float ou None (radiacao solar medida)
-    - weather_code: int ou None (codigo WMO do ECMWF)
     
     Retorna:
     - dict com Ra, Rs, PAR, Rn, Kt, GD, ETo, Fotoperiodo
@@ -87,24 +63,6 @@ def calcular_balanco_completo(temperatura, umidade, data, latitude, Tbase=10, Rs
     # ---- Indice de Claridade (Kt) ----
     Kt = round(Rs / Ra, 2) if Ra > 0 else 0
     
-    # Classificacao do ceu: prioriza WMO do ECMWF, depois Kt
-    if weather_code is not None:
-        condicao_ceu = traduzir_codigo_wmo(weather_code)
-        fonte_ceu = "ECMWF (WMO)"
-    else:
-        # Classificacao adaptada para regiao tropical umida - Belem/PA
-        if Kt >= 0.65:
-            condicao_ceu = "Ceu limpo"
-        elif Kt >= 0.55:
-            condicao_ceu = "Poucas nuvens"
-        elif Kt >= 0.45:
-            condicao_ceu = "Parcialmente nublado"
-        elif Kt >= 0.30:
-            condicao_ceu = "Nublado"
-        else:
-            condicao_ceu = "Muito nublado"
-        fonte_ceu = "Estimado (Kt)"
-    
     # ---- PAR (Radiação Fotossinteticamente Ativa) ----
     PAR = round(Rs * 0.50, 1)
     
@@ -115,14 +73,26 @@ def calcular_balanco_completo(temperatura, umidade, data, latitude, Tbase=10, Rs
     # ---- Fotoperiodo ----
     fotoperiodo = calcular_fotoperiodo(latitude, data)
     
+    # ---- Amplitude termica diaria ----
+    amplitude = temp_max - temp_min
+    if amplitude < 0:
+        amplitude = 0.0
+    
     # ---- Graus-dia ----
     GD = round(temperatura - Tbase, 1)
     if GD < 0:
         GD = 0.0
     
     # ---- ETo - Hargreaves-Samani (FAO-56) ----
-    # Escolhido por requerer apenas temperatura e radiacao
-    ETo = round(0.0023 * (temperatura + 17.8) * math.sqrt(temperatura - Tbase) * Rs, 2)
+    # ATENCAO: A formula original usa Ra (radiacao extraterrestre), NAO Rs
+    # A amplitude termica (Tmax-Tmin) atua como proxy da transmissividade atmosferica
+    # O coeficiente 0,0023 ja inclui a conversao de unidades (calor latente de vaporizacao)
+    # Resultado em mm/dia
+    if amplitude > 0:
+        ETo = round(0.0023 * (temperatura + 17.8) * math.sqrt(amplitude) * Ra, 2)
+    else:
+        ETo = 0.0
+    
     if ETo < 0:
         ETo = 0.0
     
@@ -141,9 +111,7 @@ def calcular_balanco_completo(temperatura, umidade, data, latitude, Tbase=10, Rs
         },
         "Kt": {
             "valor": Kt,
-            "descricao": "Indice de Claridade",
-            "condicao": condicao_ceu,
-            "fonte": fonte_ceu
+            "descricao": "Indice de Claridade"
         },
         "PAR": {
             "valor": PAR,
@@ -172,6 +140,6 @@ def calcular_balanco_completo(temperatura, umidade, data, latitude, Tbase=10, Rs
             "valor": ETo,
             "unidade": "mm/dia",
             "descricao": "Evapotranspiracao de Referencia",
-            "metodo": "Hargreaves-Samani (FAO-56)"
+            "metodo": "Hargreaves-Samani (FAO-56) - usa Ra e amplitude termica"
         }
     }
