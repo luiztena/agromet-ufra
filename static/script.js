@@ -24,6 +24,9 @@ var icon = L.divIcon({
 // Variável para o marcador
 var marker = null;
 
+// Variável do gráfico
+var chartInstance = null;
+
 // Cache dos dados atmosféricos
 var cacheAtmosfera = null;
 var cacheAtmosferaTimestamp = 0;
@@ -157,6 +160,152 @@ function calcularSensacaoLocal(temp, umidade) {
     return T;
 }
 
+// ============ GRÁFICO ============
+
+async function abrirGrafico() {
+    document.getElementById('grafico-container').style.display = 'block';
+    await carregarGrafico(7);
+}
+
+function fecharGrafico() {
+    document.getElementById('grafico-container').style.display = 'none';
+    if (chartInstance) {
+        chartInstance.destroy();
+        chartInstance = null;
+    }
+}
+
+async function carregarGrafico(dias) {
+    try {
+        var botoes = document.querySelectorAll('#grafico-container button');
+        botoes.forEach(function(btn) {
+            if (btn.onclick && btn.onclick.toString().indexOf('fecharGrafico') === -1) {
+                btn.style.background = '#e8f4fd';
+                btn.style.color = '#333';
+                btn.style.fontWeight = 'normal';
+            }
+        });
+        
+        var respTotal = await fetch('/api/estacao');
+        var info = await respTotal.json();
+        var total = info.total_registros;
+        var offset = Math.max(0, total - dias);
+        
+        var resp = await fetch('/api/todas?limite=' + dias + '&offset=' + offset);
+        var dados = await resp.json();
+        var registros = dados.dados;
+        
+        var labels = [];
+        var temps09 = [];
+        var tempsMin = [];
+        var tempsMax = [];
+        
+        for (var i = 0; i < registros.length; i++) {
+            var d = registros[i];
+            labels.push(formatarData(d.date));
+            temps09.push(d.temp_09h || null);
+            tempsMin.push(d.temp_min || null);
+            tempsMax.push(d.temp_max_previous_day || d.temp_max || null);
+        }
+        
+        var ctx = document.getElementById('grafico-temperatura').getContext('2d');
+        
+        if (chartInstance) {
+            chartInstance.destroy();
+        }
+        
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Temp. 09h',
+                        data: temps09,
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.05)',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        pointRadius: dias > 30 ? 0 : 3,
+                        pointBackgroundColor: '#e74c3c'
+                    },
+                    {
+                        label: 'Temp. Mínima',
+                        data: tempsMin,
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.05)',
+                        borderWidth: 1.5,
+                        tension: 0.3,
+                        pointRadius: dias > 30 ? 0 : 2,
+                        pointBackgroundColor: '#3498db'
+                    },
+                    {
+                        label: 'Temp. Máxima (dia anterior)',
+                        data: tempsMax,
+                        borderColor: '#e67e22',
+                        backgroundColor: 'rgba(230, 126, 34, 0.05)',
+                        borderWidth: 1.5,
+                        tension: 0.3,
+                        pointRadius: dias > 30 ? 0 : 2,
+                        pointBackgroundColor: '#e67e22'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            boxWidth: 12,
+                            padding: 10,
+                            font: { size: 11 }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: function(items) {
+                                return items[0].label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Temperatura (°C)',
+                            font: { size: 11 }
+                        },
+                        grid: {
+                            color: 'rgba(0,0,0,0.05)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            maxTicksLimit: dias > 90 ? 12 : dias > 30 ? 10 : 7,
+                            font: { size: 10 }
+                        }
+                    }
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('Erro ao carregar gráfico:', error);
+    }
+}
+
+// ============ MAPA E POPUP ============
+
 async function atualizarMapa(dados) {
     if (!dados) {
         console.warn('Dados nao recebidos');
@@ -182,6 +331,8 @@ async function atualizarMapa(dados) {
     var ventoAtual = '--';
     var chuvaAtual = '--';
     var precipAtual = '--';
+    var tempMaxAtual = '--';
+    var tempMinAtual = '--';
     
     if (dadosAtmosfera && dadosAtmosfera.status === 'sucesso') {
         tempAtual = dadosAtmosfera.temperatura.atual || '--';
@@ -190,6 +341,8 @@ async function atualizarMapa(dados) {
         ventoAtual = dadosAtmosfera.vento.velocidade + ' m/s (' + dadosAtmosfera.vento.direcao_cardeal + ')';
         chuvaAtual = dadosAtmosfera.chuva.chovendo ? 'Chovendo' : 'Sem chuva';
         precipAtual = dadosAtmosfera.chuva.precipitacao_mm + ' mm';
+        tempMaxAtual = dadosAtmosfera.temperatura.maxima || '--';
+        tempMinAtual = dadosAtmosfera.temperatura.minima || '--';
         if (tempAtual !== '--' && umidAtual !== '--') {
             sensacaoAtual = calcularSensacaoLocal(tempAtual, umidAtual);
         }
@@ -212,10 +365,10 @@ async function atualizarMapa(dados) {
         // TITULO
         '<div style="text-align: center; font-size: 15px; font-weight: 700; color: #1a3a5c; margin-bottom: 10px; letter-spacing: 0.5px;">' + NOME + '</div>' +
         
-        // ============ CARDS LADO A LADO (TODOS) ============
+        // ============ CARDS LADO A LADO ============
         '<div style="display: flex; gap: 8px; align-items: stretch;">' +
         
-        // ESTACAO (09:00)
+        // ============ ESTACAO (09:00) ============
         '<div style="flex: 1; background: linear-gradient(135deg, #e8f4fd, #d4eafc); border-radius: 10px; padding: 12px; border-top: 4px solid #2e86c1;">' +
         '<div style="font-size: 10px; font-weight: 700; color: #1a5276; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px;">Estacao &bull; 09:00</div>' +
         '<div style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px;">' +
@@ -228,13 +381,14 @@ async function atualizarMapa(dados) {
         '<div><span style="color: #777;">Umidade:</span> <span style="font-weight: 600; color: #333;">' + umid09 + '%</span></div>' +
         '<div><span style="color: #777;">Vento:</span> <span style="font-weight: 600; color: #333;">--</span></div>' +
         '<div><span style="color: #777;">Precip.:</span> <span style="font-weight: 600; color: #333;">' + precip09 + ' mm</span></div>' +
-        '<div><span style="color: #777;">Min/Max:</span> <span style="font-weight: 600; color: #333;">' + tempMin + '/' + tempMax + ' C</span></div>' +
+        '<div><span style="color: #777;">Máxima:</span> <span style="font-weight: 600; color: #e67e22;">' + tempMax + ' °C</span><span style="font-size: 9px; color: #999;"> (dia anterior)</span></div>' +
+        '<div><span style="color: #777;">Mínima:</span> <span style="font-weight: 600; color: #3498db;">' + tempMin + ' °C</span></div>' +
         '</div>' +
         '<div style="font-size: 8px; color: #999; margin-top: 6px; text-align: right;"><b>ISARH</b></div>' +
         '<div style="font-size: 9px; color: #777; margin-top: 2px; text-align: right; font-weight: 600;">' + obs + '</div>' +
         '</div>' +
         
-        // AGORA (ECMWF)
+        // ============ AGORA (ECMWF) ============
         (dadosAtmosfera && dadosAtmosfera.status === 'sucesso' ? 
         '<div style="flex: 1; background: linear-gradient(135deg, #f0e8f8, #e2d4f0); border-radius: 10px; padding: 12px; border-top: 4px solid #7b4fa0;">' +
         '<div style="font-size: 10px; font-weight: 700; color: #5a3478; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px;">Agora &bull; ' + agoraFormatado() + '</div>' +
@@ -249,12 +403,14 @@ async function atualizarMapa(dados) {
         '<div><span style="color: #777;">Vento:</span> <span style="font-weight: 600; color: #333;">' + ventoAtual + '</span></div>' +
         '<div><span style="color: #777;">Precip.:</span> <span style="font-weight: 600; color: #333;">' + precipAtual + '</span></div>' +
         '<div><span style="color: #777;">Ceu:</span> <span style="font-weight: 600; color: #333;">' + ceuAtual + '</span></div>' +
+        '<div><span style="color: #777;">Máxima:</span> <span style="font-weight: 600; color: #e67e22;">' + tempMaxAtual + ' °C</span><span style="font-size: 9px; color: #999;"> (previsão)</span></div>' +
+        '<div><span style="color: #777;">Mínima:</span> <span style="font-weight: 600; color: #3498db;">' + tempMinAtual + ' °C</span></div>' +
         '</div>' +
         '<div style="font-size: 11px; margin-top: 4px; font-weight: 500; color: #555;">' + chuvaAtual + '</div>' +
         '<div style="font-size: 8px; color: #999; margin-top: 6px; text-align: right;"><b>ECMWF</b></div>' +
         '</div>' : '') +
         
-        // MODULO AGROMETEOROLOGICO
+        // ============ MODULO AGROMETEOROLOGICO ============
         (balancoEnergia && !balancoEnergia.erro ? 
         '<div style="flex: 1; background: linear-gradient(135deg, #e8f8e8, #d4f0d4); border-radius: 10px; padding: 12px; border-top: 4px solid #27ae60;">' +
         '<div style="font-size: 10px; font-weight: 700; color: #1e7e34; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">Modulo Agrometeorologico</div>' +
@@ -271,7 +427,7 @@ async function atualizarMapa(dados) {
         '<div style="font-size: 8px; color: #999; margin-top: 4px; text-align: right;">* Rn estimado para fins didaticos</div>' +
         '</div>' : '') +
         
-        '</div>' +  // FIM DOS CARDS LADO A LADO
+        '</div>' +  // FIM DOS CARDS
         
         '</div>';
 

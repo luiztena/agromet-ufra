@@ -27,6 +27,10 @@ def obter_condicoes_atmosfericas():
             "relative_humidity_2m",
             "temperature_2m"
         ],
+        "daily": [
+            "temperature_2m_max",
+            "temperature_2m_min"
+        ],
         "timezone": "America/Belem",
         "forecast_days": 1
     }
@@ -37,6 +41,7 @@ def obter_condicoes_atmosfericas():
         dados = resposta.json()
         
         current = dados.get('current', {})
+        daily = dados.get('daily', {})
         
         # Velocidade do vento em m/s (Open-Meteo retorna km/h)
         velocidade_kmh = current.get('wind_speed_10m', 0)
@@ -62,6 +67,10 @@ def obter_condicoes_atmosfericas():
         # Cobertura de nuvens
         nuvens = current.get('cloud_cover', 0)
         
+        # Temperaturas máximas e mínimas do dia (ECMWF)
+        temp_max = daily.get('temperature_2m_max', [None])[0] if daily.get('temperature_2m_max') else None
+        temp_min = daily.get('temperature_2m_min', [None])[0] if daily.get('temperature_2m_min') else None
+        
         return {
             "status": "sucesso",
             "vento": {
@@ -86,7 +95,9 @@ def obter_condicoes_atmosfericas():
             },
             "temperatura": {
                 "atual": current.get('temperature_2m'),
-                "umidade": current.get('relative_humidity_2m')
+                "umidade": current.get('relative_humidity_2m'),
+                "maxima": temp_max,
+                "minima": temp_min
             },
             "atualizado_em": datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
             "fonte_dados": "Open-Meteo (ECMWF) - Modelo Global"

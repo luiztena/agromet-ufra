@@ -317,3 +317,29 @@ body {
     max-width: 740px !important;
     border-radius: 12px !important;
 }
+#grafico-container {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    background: rgba(255, 255, 255, 0.97);
+    padding: 16px 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    width: 500px;
+    max-width: 90vw;
+}
+
+#grafico-container canvas {
+    width: 100% !important;
+    height: auto !important;
+}
+
+@media (max-width: 768px) {
+    #grafico-container {
+        width: 95vw;
+        padding: 12px;
+        bottom: 10px;
+    }
+}

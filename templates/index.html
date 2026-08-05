@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🌦️ Estação Meteorológica - UFRA</title>
     
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
@@ -31,27 +34,44 @@
     </div>
 
     <div id="map">
-        
         <div class="loading" id="loading">
             <i class="fas fa-spinner"></i>
             <p>Carregando dados meteorológicos...</p>
         </div>
 
-        <!-- Seletor de Data -->
- <div id="seletor-data">
-    <input type="date" id="data-escolhida" min="2019-12-17" max="2026-06-04">
-    <button onclick="buscarPorData()">
-        <i class="fas fa-search"></i> Buscar
-    </button>
-    <button onclick="voltarUltima()" style="background: #27ae60;">
-        <i class="fas fa-sync"></i> Atual
-    </button>
-    <button onclick="atualizarDadosEstacao()" style="background: #e67e22;">
-        <i class="fas fa-cloud-download-alt"></i> ISARH
-    </button>
+       <!-- Gráfico -->
+<div id="grafico-container" style="display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span style="font-weight: 700; color: #1a3a5c;">📈 Temperatura - Série Temporal</span>
+        <button onclick="fecharGrafico()" style="background: none; border: none; cursor: pointer; font-size: 18px; color: #999;">&times;</button>
+    </div>
+    <div style="display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap;">
+        <button onclick="carregarGrafico(7)" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 15px; background: #e8f4fd; cursor: pointer; font-size: 11px;">7 dias</button>
+        <button onclick="carregarGrafico(15)" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 15px; background: #e8f4fd; cursor: pointer; font-size: 11px;">15 dias</button>
+        <button onclick="carregarGrafico(30)" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 15px; background: #e8f4fd; cursor: pointer; font-size: 11px;">30 dias</button>
+        <button onclick="carregarGrafico(90)" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 15px; background: #e8f4fd; cursor: pointer; font-size: 11px;">3 meses</button>
+        <button onclick="carregarGrafico(180)" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 15px; background: #e8f4fd; cursor: pointer; font-size: 11px;">6 meses</button>
+        <button onclick="carregarGrafico(365)" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 15px; background: #e8f4fd; cursor: pointer; font-size: 11px;">1 ano</button>
+    </div>
+    <canvas id="grafico-temperatura" width="400" height="200"></canvas>
 </div>
-        
- 
+
+        <!-- Seletor de Data -->
+        <div id="seletor-data">
+            <input type="date" id="data-escolhida" min="2019-12-17" max="2026-06-04">
+            <button onclick="buscarPorData()">
+                <i class="fas fa-search"></i> Buscar
+            </button>
+            <button onclick="voltarUltima()" style="background: #27ae60;">
+                <i class="fas fa-sync"></i> Atual
+            </button>
+            <button onclick="atualizarDadosEstacao()" style="background: #e67e22;">
+                <i class="fas fa-cloud-download-alt"></i> ISARH
+            </button>
+            <button onclick="abrirGrafico()" style="background: #3498db;">
+                <i class="fas fa-chart-line"></i> Gráfico
+            </button>
+        </div>
     </div>
 
     <!-- Leaflet JS -->
