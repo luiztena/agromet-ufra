@@ -70,12 +70,13 @@ def extrair_dados(html):
                 except ValueError:
                     dados[campo] = None
     
-    # Extrai observadores e responsável
+    # Extrai responsável
     match_resp = re.search(r'Docente Responsável\s*:\s*([^|]+)', texto)
-    match_obs = re.search(r'Observadores\s*:\s*(.+?)(?:\s*$)', texto)
+    dados['responsible_teacher'] = match_resp.group(1).strip() if match_resp else "Paulo Jorge de O. P. de Souza"
     
-    dados['responsible_teacher'] = match_resp.group(1).strip() if match_resp else "Não identificado"
-    dados['observers'] = match_obs.group(1).strip() if match_obs else "Não identificado"
+    # Extrai observadores
+    match_obs = re.search(r'Observadores?\s*:\s*(.+?)(?:\||\s*$)', texto)
+    dados['observers'] = match_obs.group(1).strip() if match_obs else "Membros do Grupo ISPAAm"
     
     return dados if dados.get('temp_09h') else None
 

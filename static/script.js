@@ -26,13 +26,37 @@ const icon = L.divIcon({
 // Variável para o marcador
 let marker = null;
 
+// Cache dos dados atmosféricos
+let cacheAtmosfera = null;
+let cacheAtmosferaTimestamp = 0;
+
+// Função para obter dados atmosféricos com cache (10 min)
+async function obterDadosAtmosfera() {
+    const agora = Date.now();
+    if (cacheAtmosfera && (agora - cacheAtmosferaTimestamp) < 600000) {
+        return cacheAtmosfera;
+    }
+    
+    try {
+        const resp = await fetch('/api/atmosfera');
+        if (resp.ok) {
+            cacheAtmosfera = await resp.json();
+            cacheAtmosferaTimestamp = agora;
+            return cacheAtmosfera;
+        }
+    } catch (e) {
+        console.log('Dados atmosféricos indisponíveis');
+    }
+    return null;
+}
+
 // Função para buscar a última observação
 async function buscarUltimaObservacao() {
     try {
         const response = await fetch('/api/ultima');
         if (!response.ok) throw new Error('Erro ao buscar dados');
         const dados = await response.json();
-        atualizarMapa(dados);
+        await atualizarMapa(dados);
         atualizarLegenda(dados);
         atualizarStatus('Sistema consultado às ' + new Date().toLocaleTimeString());
         document.getElementById('loading').style.display = 'none';
@@ -72,7 +96,7 @@ async function buscarPorData() {
             throw new Error('Erro ao buscar dados');
         }
         const dados = await response.json();
-        atualizarMapa(dados);
+        await atualizarMapa(dados);
         atualizarLegenda(dados);
         atualizarStatus('Mostrando dados de: ' + formatarData(data));
         document.getElementById('loading').style.display = 'none';
@@ -97,6 +121,7 @@ async function atualizarDadosEstacao() {
         
         if (resultado.status === 'sucesso') {
             alert(`✅ Dados atualizados!\n\n📅 Data: ${resultado.data}\n🌡️ Temperatura: ${resultado.temperatura}°C\n💧 Umidade: ${resultado.umidade}%\n📊 Total de registros: ${resultado.total_registros}`);
+            cacheAtmosfera = null; // Limpa cache
             buscarUltimaObservacao();
         } else {
             alert('❌ Erro: ' + (resultado.mensagem || 'Falha na atualização'));
@@ -126,20 +151,39 @@ function formatarData(data) {
     return `${partes[2]}/${partes[1]}/${partes[0]}`;
 }
 
-function atualizarMapa(dados) {
+async function atualizarMapa(dados) {
     if (!dados) {
         console.warn('Dados não recebidos');
         return;
     }
 
-    // Usar valor padrão '--' se o dado for null
+    // Buscar dados atmosféricos do ECMWF
+    const dadosAtmosfera = await obterDadosAtmosfera();
+
     const temp09 = dados.temperatura_09h || '--';
     const umid09 = dados.umidade_09h || '--';
-    const vento09 = dados.vento_09h || '--';
-    const precip = dados.precipitacao || '--';
+    
+    // Vento: ISARH primeiro, depois ECMWF
+    let vento09 = dados.vento_09h;
+    if (!vento09 && dadosAtmosfera && dadosAtmosfera.status === 'sucesso') {
+        vento09 = dadosAtmosfera.vento.velocidade + ' m/s (' + dadosAtmosfera.vento.direcao_cardeal + ')';
+    }
+    vento09 = vento09 || '--';
+    
+    // Precipitação: ISARH primeiro, depois ECMWF
+    let precip = dados.precipitacao;
+    if (!precip && dadosAtmosfera && dadosAtmosfera.status === 'sucesso') {
+        precip = dadosAtmosfera.chuva.precipitacao_mm + ' mm';
+    }
+    precip = precip || '--';
+    
     const tempMin = dados.temp_min || '--';
     const tempMax = dados.temp_max || '--';
-    const obs = dados.observadores || '--';
+    const obs = dados.observadores || 'Membros do Grupo ISPAAm';
+    
+    // Dados extras da atmosfera
+    const ceu = (dadosAtmosfera && dadosAtmosfera.status === 'sucesso') ? dadosAtmosfera.ceu.descricao : '';
+    const fonte = (dadosAtmosfera && dadosAtmosfera.status === 'sucesso') ? '📡 ISARH + 🌍 ECMWF' : '📡 ISARH';
 
     const popupContent = `
         <div style="text-align: center;">
@@ -149,11 +193,12 @@ function atualizarMapa(dados) {
             <div class="popup-info">
                 <div><span class="label">🌡️ Mín/Máx:</span> <span class="value">${tempMin}°C / ${tempMax}°C</span></div>
                 <div><span class="label">💧 Umidade:</span> <span class="value">${umid09}%</span></div>
-                <div><span class="label">💨 Vento:</span> <span class="value">${vento09} m/s</span></div>
-                <div><span class="label">🌧️ Precip.:</span> <span class="value">${precip} mm</span></div>
+                <div><span class="label">💨 Vento:</span> <span class="value">${vento09}</span></div>
+                <div><span class="label">🌧️ Precip.:</span> <span class="value">${precip}</span></div>
+                ${ceu ? `<div style="grid-column: 1 / -1;"><span class="label">☀️ Céu:</span> <span class="value">${ceu}</span></div>` : ''}
             </div>
-            <div style="font-size: 11px; color: #999; margin-top: 8px; border-top: 1px solid #eee; padding-top: 5px;">
-                Observadores: ${obs}
+            <div style="font-size: 10px; color: #999; margin-top: 8px; border-top: 1px solid #eee; padding-top: 5px;">
+                ${obs} • ${fonte}
             </div>
         </div>
     `;
@@ -169,11 +214,30 @@ function atualizarMapa(dados) {
     }
 }
 
-function atualizarLegenda(dados) {
+async function atualizarLegenda(dados) {
     document.getElementById('leg-temp').textContent = dados.temperatura_09h || '--';
     document.getElementById('leg-umidade').textContent = dados.umidade_09h || '--';
-    document.getElementById('leg-vento').textContent = dados.vento_09h || '--';
-    document.getElementById('leg-precip').textContent = dados.precipitacao || '--';
+    
+    // Vento: ISARH ou ECMWF
+    let vento = dados.vento_09h;
+    if (!vento) {
+        const atm = await obterDadosAtmosfera();
+        if (atm && atm.status === 'sucesso') {
+            vento = atm.vento.velocidade + ' (' + atm.vento.direcao_cardeal + ')';
+        }
+    }
+    document.getElementById('leg-vento').textContent = vento || '--';
+    
+    // Precipitação: ISARH ou ECMWF
+    let precip = dados.precipitacao;
+    if (!precip) {
+        const atm = await obterDadosAtmosfera();
+        if (atm && atm.status === 'sucesso') {
+            precip = atm.chuva.precipitacao_mm;
+        }
+    }
+    document.getElementById('leg-precip').textContent = precip || '--';
+    
     document.getElementById('leg-data').textContent = dados.data || '--';
 }
 
@@ -182,6 +246,7 @@ function atualizarStatus(texto) {
 }
 
 function recarregar() {
+    cacheAtmosfera = null;
     document.getElementById('loading').style.display = 'block';
     document.getElementById('loading').innerHTML = `
         <i class="fas fa-spinner"></i>

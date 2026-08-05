@@ -3,6 +3,7 @@ from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 import os
 from scraper import atualizar_dados as atualizar_dados_scraper
+from atmosfera import obter_condicoes_atmosfericas
 
 app = Flask(__name__)
 CORS(app)  # Permite requisições de outros domínios
@@ -158,6 +159,12 @@ def info_estacao():
         "primeira_data": dados[0].get('date') if dados else None,
         "ultima_data": dados[-1].get('date') if dados else None
     })
+
+@app.route('/api/atmosfera')
+def condicoes_atmosfericas():
+    """Retorna condições atmosféricas em tempo real (ECMWF)."""
+    dados = obter_condicoes_atmosfericas()
+    return jsonify(dados)
 
 @app.route('/api/resumo')
 def resumo_estatistico():
