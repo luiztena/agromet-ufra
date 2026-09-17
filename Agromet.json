@@ -36273,20 +36273,6 @@
     "responsible_teacher": "Paulo Jorge de O. P. de Souza",
     "observers": "Membros do Grupo ISPAAm",
     "note": "Dados não coletados"
-  },
-  {
-    "date": "2026-08-04",
-    "temp_09h": 29.6,
-    "humidity_09h": 90.99,
-    "wind_09h": null,
-    "temp_min": 23.9,
-    "temp_max_previous_day": 33.8,
-    "precipitation_24h": null,
-    "evaporation_24h": null,
-    "temp_15h": null,
-    "humidity_15h": null,
-    "wind_15h": null,
-    "responsible_teacher": "Paulo Jorge de O. P. de Souza",
-    "observers": "Membros do Grupo ISPAAm"
   }
+
 ]

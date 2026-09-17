@@ -1,5 +1,6 @@
 """
 Agromet - API Flask para dados meteorológicos da estação UFRA
+Consome o JSON normalizado do ISPAAM (duas observações por dia: 09:00 e 15:00).
 """
 import json
 from flask import Flask, jsonify, render_template, request
@@ -19,31 +20,144 @@ CORS(app)
 LATITUDE = -1.455016
 LONGITUDE = -48.435260
 NOME_ESTACAO = "UFRA - Belém/PA"
-ARQUIVO_JSON = "Agromet.json"
+ARQUIVO_JSON = "dados_2026.json"   # <- ajustado para o nome atual do arquivo
 
 
 # ---------------------------------------------------------------------------
-# Funções auxiliares
+# Helpers de conversão
+# ---------------------------------------------------------------------------
+def para_float(valor):
+    """Converte '33,60' ou '33.60' em float. Retorna None se vazio/inválido."""
+    if valor is None:
+        return None
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    if isinstance(valor, str):
+        s = valor.strip().replace(",", ".")
+        if not s:
+            return None
+        try:
+            return float(s)
+        except ValueError:
+            return None
+    return None
+
+
+def corrigir_encoding(texto):
+    """Corrige mojibake comum em nomes (ex.: 'JosÃ©' -> 'José')."""
+    if isinstance(texto, str) and "Ã" in texto:
+        try:
+            return texto.encode("latin1").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            return texto
+    return texto
+
+
+def chave_ordenacao(registro):
+    """
+    Constrói uma chave de ordenação cronológica a partir de 'Data (dd/mm/aaaa)'.
+    Como o arquivo só tem dd/mm (sem ano), usamos (mês, dia) como chave.
+    Isso garante que o agrupamento e a ordenação fiquem corretos
+    mesmo se o JSON não estiver na ordem esperada.
+
+    Se o ano aparecer no campo 'Data' em algum momento (formato dd/mm/aaaa),
+    ele é usado como primeiro critério.
+    """
+    data = registro.get("Data    (dd/mm/aaaa)") or ""
+    partes = data.split("/")
+    try:
+        if len(partes) == 3:  # dd/mm/aaaa
+            dia, mes, ano = int(partes[0]), int(partes[1]), int(partes[2])
+            return (ano, mes, dia)
+        elif len(partes) == 2:  # dd/mm
+            dia, mes = int(partes[0]), int(partes[1])
+            return (0, mes, dia)
+    except (ValueError, IndexError):
+        pass
+    return (9999, 99, 99)  # registros inválidos vão para o fim
+
+
+# ---------------------------------------------------------------------------
+# Carregamento e agrupamento dos dados
 # ---------------------------------------------------------------------------
 def carregar_dados():
-    """Lê o arquivo JSON de observações e corrige encoding quando necessário."""
+    """
+    Lê o JSON normalizado, ORDENA cronologicamente e agrupa as duas
+    observações diárias (09:00 e 15:00) em um único registro por data.
+    O resultado mantém o formato que o restante da API e o frontend esperam.
+    """
     try:
         with open(ARQUIVO_JSON, "r", encoding="utf-8") as f:
-            dados = json.load(f)
+            linhas = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return []
 
-    for registro in dados:
-        if "observers" in registro and "Ã©" in str(registro["observers"]):
-            registro["observers"] = registro["observers"].encode("latin1").decode("utf-8")
-        if "responsible_teacher" in registro and "Ã©" in str(registro["responsible_teacher"]):
-            registro["responsible_teacher"] = registro["responsible_teacher"].encode("latin1").decode("utf-8")
+    # Ponto 4: garante ordem cronológica independente da ordem do arquivo.
+    linhas.sort(key=chave_ordenacao)
 
-    return dados
+    por_data = {}
+
+    for linha in linhas:
+        data = linha.get("Data    (dd/mm/aaaa)")
+        if not data:
+            continue
+        hora = linha.get("Hora local (hh:mm)")
+
+        reg = por_data.setdefault(data, {
+            "date": data,
+            "dia_semana": linha.get("  "),
+            # 09:00 (protocolo completo)
+            "temp_09h": None,
+            "humidity_09h": None,
+            "wind_09h": None,
+            "temp_min": None,
+            "temp_max_previous_day": None,
+            "precipitation_24h": None,
+            "evaporation_24h": None,
+            "observers": None,
+            "evento_09h": None,
+            # 15:00 (protocolo reduzido)
+            "temp_15h": None,
+            "humidity_15h": None,
+            "wind_15h": None,
+            "evento_15h": None,
+            # metadados
+            "protocolo_09h": None,
+            "protocolo_15h": None,
+        })
+
+        if hora == "09:00":
+            reg["temp_09h"]                = para_float(linha.get("Tar (°C)"))
+            reg["humidity_09h"]            = para_float(linha.get("UR (%)"))
+            reg["wind_09h"]                = linha.get("Direção do vento")
+            reg["temp_min"]                = para_float(linha.get("Tmin (°C)"))
+            reg["temp_max_previous_day"]   = para_float(linha.get("Tmáx (°C)"))
+            reg["precipitation_24h"]       = para_float(linha.get("Prp (mm/dia)"))
+            reg["evaporation_24h"]         = para_float(linha.get("Ev (mm/dia)"))
+            reg["observers"]               = corrigir_encoding(linha.get("Observadores"))
+            reg["evento_09h"]              = linha.get("Evento")
+            reg["protocolo_09h"]           = linha.get("protocolo")
+
+        elif hora == "15:00":
+            reg["temp_15h"]      = para_float(linha.get("Tar (°C)"))
+            reg["humidity_15h"]  = para_float(linha.get("UR (%)"))
+            reg["wind_15h"]      = linha.get("Direção do vento")
+            reg["evento_15h"]    = linha.get("Evento")
+            reg["protocolo_15h"] = linha.get("protocolo")
+
+    # Ponto 4 (reforço): reordena o resultado agrupado cronologicamente.
+    resultado = sorted(
+        por_data.values(),
+        key=lambda r: chave_ordenacao({"Data    (dd/mm/aaaa)": r["date"]}),
+    )
+    return resultado
 
 
+# ---------------------------------------------------------------------------
+# Montagem da resposta
+# ---------------------------------------------------------------------------
 def montar_resposta_observacao(registro):
-    """Monta o dicionário de resposta padrão a partir de um registro."""
+    """Monta o dicionário de resposta padrão a partir de um registro agrupado."""
     temp = registro.get("temp_09h")
     umidade = registro.get("humidity_09h")
     vento = registro.get("wind_09h")
@@ -52,6 +166,7 @@ def montar_resposta_observacao(registro):
 
     return {
         "data": registro.get("date"),
+        "dia_semana": registro.get("dia_semana"),
         "temperatura_09h": temp,
         "umidade_09h": umidade,
         "vento_09h": vento,
@@ -64,8 +179,9 @@ def montar_resposta_observacao(registro):
         "temp_15h": registro.get("temp_15h"),
         "umidade_15h": registro.get("humidity_15h"),
         "vento_15h": registro.get("wind_15h"),
+        "evento_09h": registro.get("evento_09h"),
+        "evento_15h": registro.get("evento_15h"),
         "observadores": registro.get("observers"),
-        "responsavel": registro.get("responsible_teacher"),
         "latitude": LATITUDE,
         "longitude": LONGITUDE,
         "estacao": NOME_ESTACAO,
@@ -91,7 +207,10 @@ def ultima_observacao():
     if not dados:
         return jsonify({"erro": "Nenhum dado disponível"}), 404
 
-    ultimo = next((r for r in reversed(dados) if r.get("temp_09h") is not None), dados[-1])
+    ultimo = next(
+        (r for r in reversed(dados) if r.get("temp_09h") is not None),
+        dados[-1]
+    )
     return jsonify(montar_resposta_observacao(ultimo))
 
 
@@ -119,16 +238,37 @@ def observacao_por_data(data):
 
 @app.route("/api/todas")
 def todas_observacoes():
+    """
+    Lista paginada de observações agrupadas.
+
+    Parâmetros:
+      - limite (int, default 100)
+      - offset (int, default 0)
+      - formato (str, default 'tratado'):
+          'tratado' -> registros já convertidos por montar_resposta_observacao
+                       (padrão novo, recomendado)
+          'bruto'   -> registros agrupados crus (formato intermediário,
+                       útil pra debug ou pra quem quer os campos internos
+                       como protocolo_09h/protocolo_15h)
+    """
     dados = carregar_dados()
     limite = request.args.get("limite", default=100, type=int)
     offset = request.args.get("offset", default=0, type=int)
+    formato = request.args.get("formato", default="tratado", type=str).lower()
+
     paginado = dados[offset:offset + limite] if dados else []
+
+    if formato == "bruto":
+        itens = paginado
+    else:
+        itens = [montar_resposta_observacao(r) for r in paginado]
 
     return jsonify({
         "total": len(dados) if dados else 0,
         "offset": offset,
         "limite": limite,
-        "dados": paginado,
+        "formato": formato,
+        "dados": itens,
         "estacao": {
             "nome": NOME_ESTACAO,
             "latitude": LATITUDE,
@@ -165,11 +305,11 @@ def balanco_energia(data):
     for registro in dados:
         if registro.get("date") == data:
             temp = registro.get("temp_09h")
-            temp_max = registro.get("temp_max_previous_day") or registro.get("temp_max") or temp
+            temp_max = registro.get("temp_max_previous_day") or temp
             temp_min = registro.get("temp_min")
             umidade = registro.get("humidity_09h")
-            
-            if temp is not None and umidade is not None and temp_max is not None and temp_min is not None:
+
+            if all(v is not None for v in (temp, umidade, temp_max, temp_min)):
                 resultado = calcular_balanco_completo(
                     temperatura=temp,
                     temp_max=temp_max,
@@ -177,7 +317,7 @@ def balanco_energia(data):
                     umidade=umidade,
                     data=data,
                     latitude=LATITUDE,
-                    Rs_medido=None
+                    Rs_medido=None,
                 )
                 return jsonify(resultado)
             else:
@@ -192,9 +332,9 @@ def resumo_estatistico():
     if not dados:
         return jsonify({"erro": "Sem dados"}), 404
 
-    temps = [d.get("temp_09h") for d in dados if d.get("temp_09h") is not None]
-    umidades = [d.get("humidity_09h") for d in dados if d.get("humidity_09h") is not None]
-    precipitacoes = [d.get("precipitation_24h") for d in dados if d.get("precipitation_24h") is not None]
+    temps = [d["temp_09h"] for d in dados if d.get("temp_09h") is not None]
+    umidades = [d["humidity_09h"] for d in dados if d.get("humidity_09h") is not None]
+    precipitacoes = [d["precipitation_24h"] for d in dados if d.get("precipitation_24h") is not None]
 
     return jsonify({
         "temperatura": {
