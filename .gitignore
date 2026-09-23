@@ -1,16 +1,32 @@
-# Ambiente virtual
+# Ambientes virtuais
 venv/
-venv_*/
-.env
+.venv/
 
 # Python
 __pycache__/
 *.pyc
+*.pyo
 
-# Editor
-.vscode/
+# Banco de dados (binário, gerado por script)
+banco/*.db
+banco/*.db.bak
+banco/*.db-journal
+
+# Dados brutos (planilhas e JSONs — pesados, versionar via outro meio)
+dados_brutos/**/*.xlsx
+dados_brutos/**/*.xls
+dados_brutos/**/*.csv
+dados_brutos/**/*.json
+dados_brutos/**/*.bak
+
+# Backups
+*.bak
+*.backup
 
 # Sistema
-*.log
 .DS_Store
 Thumbs.db
+
+# IDE
+.vscode/
+.idea/
