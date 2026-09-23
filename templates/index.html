@@ -4,20 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🌦️ Estação Meteorológica - UFRA</title>
-    
+
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    
-    <!-- Font Awesome para ícones -->
+
+    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    
+
     <!-- CSS Personalizado -->
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body data-lat="{{ lat }}" data-lng="{{ lng }}" data-nome="{{ nome_estacao }}">
+<body
+    data-lat="{{ lat }}"
+    data-lng="{{ lng }}"
+    data-nome="{{ nome_estacao }}"
+    data-data-inicio="{{ data_inicio }}"
+    data-data-fim="{{ data_fim }}"
+>
 
     <div id="header">
         <div style="display: flex; flex-direction: column; gap: 5px;">
@@ -39,33 +45,46 @@
             <p>Carregando dados meteorológicos...</p>
         </div>
 
-       <!-- Gráfico -->
-<div id="grafico-container" style="display: none;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <span style="font-weight: 700; color: #1a3a5c;">📈 Temperatura - Série Temporal</span>
-        <button onclick="fecharGrafico()" style="background: none; border: none; cursor: pointer; font-size: 18px; color: #999;">&times;</button>
-    </div>
-    <div style="display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap;">
-        <button onclick="carregarGrafico(7)" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 15px; background: #e8f4fd; cursor: pointer; font-size: 11px;">7 dias</button>
-        <button onclick="carregarGrafico(15)" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 15px; background: #e8f4fd; cursor: pointer; font-size: 11px;">15 dias</button>
-        <button onclick="carregarGrafico(30)" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 15px; background: #e8f4fd; cursor: pointer; font-size: 11px;">30 dias</button>
-        <button onclick="carregarGrafico(90)" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 15px; background: #e8f4fd; cursor: pointer; font-size: 11px;">3 meses</button>
-        <button onclick="carregarGrafico(180)" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 15px; background: #e8f4fd; cursor: pointer; font-size: 11px;">6 meses</button>
-        <button onclick="carregarGrafico(365)" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 15px; background: #e8f4fd; cursor: pointer; font-size: 11px;">1 ano</button>
-    </div>
-    <canvas id="grafico-temperatura" width="400" height="200"></canvas>
-</div>
+        <!-- Gráfico -->
+        <div id="grafico-container" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-weight: 700; color: #1a3a5c;">📈 Temperatura - Série Temporal</span>
+                <button onclick="fecharGrafico()" style="background: none; border: none; cursor: pointer; font-size: 18px; color: #999;">&times;</button>
+            </div>
+            <div style="display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap;">
+                <button onclick="carregarGrafico(7)"   class="btn-periodo">7 dias</button>
+                <button onclick="carregarGrafico(15)"  class="btn-periodo">15 dias</button>
+                <button onclick="carregarGrafico(30)"  class="btn-periodo">30 dias</button>
+                <button onclick="carregarGrafico(90)"  class="btn-periodo">3 meses</button>
+                <button onclick="carregarGrafico(180)" class="btn-periodo">6 meses</button>
+                <button onclick="carregarGrafico(365)" class="btn-periodo">1 ano</button>
+            </div>
+            <canvas id="grafico-temperatura" width="400" height="200"></canvas>
+        </div>
 
-        <!-- Seletor de Data -->
+        <!-- Seletor de Data e Ano -->
         <div id="seletor-data">
-            <input type="date" id="data-escolhida" min="2019-12-17" max="2026-06-04">
+            <label for="ano-escolhido" class="label-seletor">Ano:</label>
+            <select id="ano-escolhido" onchange="aoTrocarAno()">
+                <option value="">Carregando...</option>
+            </select>
+
+            <label for="data-escolhida" class="label-seletor">Data:</label>
+            <input
+                type="date"
+                id="data-escolhida"
+                min="{{ data_inicio }}"
+                max="{{ data_fim }}"
+            >
+
             <button onclick="buscarPorData()">
                 <i class="fas fa-search"></i> Buscar
             </button>
             <button onclick="voltarUltima()" style="background: #27ae60;">
                 <i class="fas fa-sync"></i> Atual
             </button>
-            <button onclick="atualizarDadosEstacao()" style="background: #e67e22;">
+            <button onclick="atualizarDadosEstacao()" style="background: #e67e22;"
+                    title="Atualiza via scraper do site do ISPAAM (fallback). O caminho normal é via planilha.">
                 <i class="fas fa-cloud-download-alt"></i> ISARH
             </button>
             <button onclick="abrirGrafico()" style="background: #3498db;">
@@ -76,9 +95,76 @@
 
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
+
     <!-- JavaScript da Aplicação -->
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+
+    <!-- Injeção de helpers e bootstrap da lista de anos -->
+    <script>
+        // Estilos dos botões de período (antes eram inline, agora em classe)
+        document.querySelectorAll('.btn-periodo').forEach(b => {
+            b.style.padding = '4px 10px';
+            b.style.border = '1px solid #ddd';
+            b.style.borderRadius = '15px';
+            b.style.background = '#e8f4fd';
+            b.style.cursor = 'pointer';
+            b.style.fontSize = '11px';
+        });
+
+        // Popula o seletor de anos com base no banco
+        (async function carregarAnos() {
+            const sel = document.getElementById('ano-escolhido');
+            try {
+                const resp = await fetch('/api/anos');
+                const json = await resp.json();
+
+                if (!json.anos || json.anos.length === 0) {
+                    sel.innerHTML = '<option value="">Sem dados</option>';
+                    return;
+                }
+
+                sel.innerHTML = '';
+                for (const item of json.anos) {
+                    const opt = document.createElement('option');
+                    opt.value = item.ano;
+                    opt.textContent = `${item.ano} (${item.total_dias} dias)`;
+                    sel.appendChild(opt);
+                }
+
+                // Seleciona o ano mais recente por padrão
+                sel.value = json.anos[json.anos.length - 1].ano;
+
+                // Ajusta min/max do input de data conforme o ano selecionado
+                atualizarRangeData(parseInt(sel.value, 10));
+            } catch (e) {
+                console.error('Erro ao carregar anos:', e);
+                sel.innerHTML = '<option value="">Erro</option>';
+            }
+        })();
+
+        function atualizarRangeData(ano) {
+            if (!ano) return;
+            const input = document.getElementById('data-escolhida');
+            input.min = `${ano}-01-01`;
+            input.max = `${ano}-12-31`;
+        }
+
+        function aoTrocarAno() {
+            const sel = document.getElementById('ano-escolhido');
+            const ano = parseInt(sel.value, 10);
+            if (!ano) return;
+
+            atualizarRangeData(ano);
+
+            // Se o script.js tiver uma função de filtro, chama;
+            // senão, recarrega a última observação do ano
+            if (typeof carregarPorAno === 'function') {
+                carregarPorAno(ano);
+            } else if (typeof voltarUltima === 'function') {
+                voltarUltima();
+            }
+        }
+    </script>
 
 </body>
 </html>
