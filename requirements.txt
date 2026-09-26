@@ -1,0 +1,12 @@
+# Framework web
+Flask>=3.0
+flask-cors>=4.0
+
+# Requisições HTTP (scraper, ECMWF)
+requests>=2.31
+
+# Parse HTML (scraper)
+beautifulsoup4>=4.12
+
+# Leitura de planilhas Excel
+openpyxl>=3.1
