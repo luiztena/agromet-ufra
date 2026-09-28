@@ -68,6 +68,24 @@ def data_iso_para_dd_mm(data_iso):
         return data_iso
 
 
+def dd_mm_aaaa_para_iso(data_dd_mm_aaaa):
+    """
+    '14/10/2025' -> '2025-10-14'.
+    Aceita também 'dd/mm' e devolve 'mm-dd' (sem ano, formato de sufixo).
+    Retorna None se não conseguir converter.
+    """
+    if not data_dd_mm_aaaa:
+        return None
+    partes = data_dd_mm_aaaa.split("/")
+    if len(partes) == 3:
+        dia, mes, ano = partes
+        return f"{ano}-{mes.zfill(2)}-{dia.zfill(2)}"
+    if len(partes) == 2:
+        dia, mes = partes
+        return f"{mes.zfill(2)}-{dia.zfill(2)}"  # sufixo, sem ano
+    return None
+
+
 def corrigir_encoding(texto):
     """Corrige mojibake comum em nomes (ex.: 'JosÃ©' -> 'José')."""
     if isinstance(texto, str) and "Ã" in texto:
@@ -252,32 +270,51 @@ def carregar_dados_por_ano(ano):
 
 def carregar_dados_por_data(data_dd_mm):
     """
-    Busca as observações de uma data específica (formato 'dd/mm').
+    Aceita 'dd/mm' OU 'dd/mm/aaaa'.
+    - Com ano (dd/mm/aaaa): filtra exatamente aquela data.
+    - Sem ano (dd/mm): pega a data MAIS RECENTE que casa com o sufixo.
     Retorna um registro agrupado ou None.
     """
-    # Converte '01/01' -> '-01-01'
-    try:
-        dia, mes = data_dd_mm.split("/")
-        sufixo = f"-{mes.zfill(2)}-{dia.zfill(2)}"
-    except (ValueError, AttributeError):
-        return None
+    partes = data_dd_mm.split("/")
 
-    linhas = consultar_banco("""
-        SELECT data_iso, dia_semana, hora_local, protocolo,
-               tar, ur, direcao_vento,
-               tmin, tmax, prp, ev_mm_dia,
-               observadores, evento
-        FROM observacoes
-        WHERE data_iso LIKE ?
-        ORDER BY hora_local ASC
-    """, (f"%{sufixo}",))
+    if len(partes) == 3:
+        # dd/mm/aaaa — data exata
+        dia, mes, ano = partes
+        alvo = f"{ano}-{mes.zfill(2)}-{dia.zfill(2)}"
+        linhas = consultar_banco("""
+            SELECT data_iso, dia_semana, hora_local, protocolo,
+                   tar, ur, direcao_vento,
+                   tmin, tmax, prp, ev_mm_dia,
+                   observadores, evento
+            FROM observacoes
+            WHERE data_iso = ?
+            ORDER BY hora_local ASC
+        """, (alvo,))
+    elif len(partes) == 2:
+        # dd/mm — pega a data mais recente que casa
+        dia, mes = partes
+        sufixo = f"-{mes.zfill(2)}-{dia.zfill(2)}"
+        linhas = consultar_banco("""
+            SELECT data_iso, dia_semana, hora_local, protocolo,
+                   tar, ur, direcao_vento,
+                   tmin, tmax, prp, ev_mm_dia,
+                   observadores, evento
+            FROM observacoes
+            WHERE data_iso LIKE ?
+            ORDER BY data_iso DESC, hora_local ASC
+        """, (f"%{sufixo}",))
+    else:
+        return None
 
     if not linhas:
         return None
 
-    primeiro = linhas[0]
-    registro = novo_registro_agrupado(primeiro["data_iso"], primeiro.get("dia_semana"))
-    for linha in linhas:
+    # Agrupa APENAS as linhas da data escolhida (a primeira, por ordenação)
+    data_alvo = linhas[0]["data_iso"]
+    linhas_mesma_data = [l for l in linhas if l["data_iso"] == data_alvo]
+
+    registro = novo_registro_agrupado(data_alvo, linhas_mesma_data[0].get("dia_semana"))
+    for linha in linhas_mesma_data:
         agrupar_linha_em_registro(registro, linha)
 
     return registro
@@ -300,6 +337,7 @@ def montar_resposta_observacao(registro):
 
     return {
         "data": registro.get("date"),
+        "data_iso": registro.get("date_iso"),          # ← NOVO (Opção B)
         "dia_semana": registro.get("dia_semana"),
         "temperatura_09h": arredondar(temp, 2),
         "umidade_09h": arredondar(umidade, 2),
@@ -395,16 +433,15 @@ def ultima_observacao():
 
 @app.route("/api/atualizar")
 def atualizar_dados_estacao():
-    try:
-        resultado = atualizar_dados_scraper()
-        return jsonify(resultado)
-    except Exception as e:
-        return jsonify({"status": "erro", "mensagem": str(e)}), 500
+    return jsonify({
+        "status": "descontinuado",
+        "mensagem": "O scraper do ISARH foi descontinuado. Os dados agora vem via planilha -> JSON -> banco."
+    }), 410
 
 
 @app.route("/api/data/<path:data>")
 def observacao_por_data(data):
-    """Busca uma data no formato 'dd/mm' (ex.: /api/data/01/01)."""
+    """Busca uma data no formato 'dd/mm' ou 'dd/mm/aaaa' (ex.: /api/data/14/10/2025)."""
     registro = carregar_dados_por_data(data)
     if not registro:
         return jsonify({"erro": "Data não encontrada"}), 404
@@ -523,7 +560,11 @@ def condicoes_atmosfericas():
 
 @app.route("/api/balanco/<path:data>")
 def balanco_energia(data):
-    """Retorna o balanço de energia para uma data específica (dd/mm)."""
+    """
+    Retorna o balanço de energia para uma data.
+    Aceita 'dd/mm' ou 'dd/mm/aaaa' na URL.
+    Internamente o cálculo espera 'YYYY-MM-DD'.
+    """
     registro = carregar_dados_por_data(data)
     if not registro:
         return jsonify({"erro": "Data não encontrada"}), 404
@@ -533,18 +574,25 @@ def balanco_energia(data):
     temp_min = registro.get("temp_min")
     umidade = registro.get("humidity_09h")
 
-    if all(v is not None for v in (temp, umidade, temp_max, temp_min)):
-        resultado = calcular_balanco_completo(
-            temperatura=temp,
-            temp_max=temp_max,
-            temp_min=temp_min,
-            umidade=umidade,
-            data=data,
-            latitude=LATITUDE,
-            Rs_medido=None,
-        )
-        return jsonify(resultado)
-    return jsonify({"erro": "Dados insuficientes para o cálculo"}), 400
+    if not all(v is not None for v in (temp, umidade, temp_max, temp_min)):
+        return jsonify({"erro": "Dados insuficientes para o cálculo"}), 400
+
+    # Converter dd/mm ou dd/mm/aaaa para YYYY-MM-DD (formato esperado pelo
+    # calcular_balanco_completo, que usa datetime.strptime(data, '%Y-%m-%d'))
+    data_iso = registro.get("date_iso")
+    if not data_iso:
+        return jsonify({"erro": "Data inválida para cálculo"}), 400
+
+    resultado = calcular_balanco_completo(
+        temperatura=temp,
+        temp_max=temp_max,
+        temp_min=temp_min,
+        umidade=umidade,
+        data=data_iso,          # ← agora vai YYYY-MM-DD, não dd/mm/aaaa
+        latitude=LATITUDE,
+        Rs_medido=None,
+    )
+    return jsonify(resultado)
 
 
 @app.route("/api/resumo")
