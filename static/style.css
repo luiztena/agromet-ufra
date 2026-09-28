@@ -342,4 +342,28 @@ body {
         padding: 12px;
         bottom: 10px;
     }
+    /* ==========================================================
+   Popup da estação — 3 cards lado a lado
+   ==========================================================
+   O Leaflet por padrão limita a largura do popup em ~300px
+   e adiciona padding. Aqui a gente libera pra caber os cards.
+   ========================================================== */
+.leaflet-popup-content {
+    width: auto !important;
+    max-width: none !important;
+    margin: 13px 19px !important;
+}
+
+.leaflet-popup-content-wrapper {
+    max-width: none !important;
+    border-radius: 12px;
+}
+
+/* Em telas pequenas (mobile), empilha os cards em vez de
+   deixar a linha estourar pra fora da tela. */
+@media (max-width: 960px) {
+    .leaflet-popup-content > div > div[style*="display: flex"] {
+        flex-direction: column !important;
+    }
+}
 }

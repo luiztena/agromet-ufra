@@ -83,10 +83,6 @@
             <button onclick="voltarUltima()" style="background: #27ae60;">
                 <i class="fas fa-sync"></i> Atual
             </button>
-            <button onclick="atualizarDadosEstacao()" style="background: #e67e22;"
-                    title="Atualiza via scraper do site do ISPAAM (fallback). O caminho normal é via planilha.">
-                <i class="fas fa-cloud-download-alt"></i> ISARH
-            </button>
             <button onclick="abrirGrafico()" style="background: #3498db;">
                 <i class="fas fa-chart-line"></i> Gráfico
             </button>
@@ -147,22 +143,6 @@
             const input = document.getElementById('data-escolhida');
             input.min = `${ano}-01-01`;
             input.max = `${ano}-12-31`;
-        }
-
-        function aoTrocarAno() {
-            const sel = document.getElementById('ano-escolhido');
-            const ano = parseInt(sel.value, 10);
-            if (!ano) return;
-
-            atualizarRangeData(ano);
-
-            // Se o script.js tiver uma função de filtro, chama;
-            // senão, recarrega a última observação do ano
-            if (typeof carregarPorAno === 'function') {
-                carregarPorAno(ano);
-            } else if (typeof voltarUltima === 'function') {
-                voltarUltima();
-            }
         }
     </script>
 

@@ -4,11 +4,40 @@ var LAT = parseFloat(body.dataset.lat);
 var LNG = parseFloat(body.dataset.lng);
 var NOME = body.dataset.nome;
 
+
+// ============ OVERRIDE DO POPUP DO LEAFLET ============
+// O Leaflet limita a largura do popup em ~300px por padrão, o que faz o
+// conteúdo com min-width: 820px vazar pra fora da div. Aqui liberamos a
+// largura e reduzimos o padding interno. Injetado uma vez só no <head>.
+(function liberarPopupLeaflet() {
+    var styleEl = document.createElement('style');
+    styleEl.id = 'leaflet-popup-override';
+    styleEl.textContent = `
+        .leaflet-popup-content {
+            width: auto !important;
+            max-width: none !important;
+            margin: 13px 19px !important;
+        }
+        .leaflet-popup-content-wrapper {
+            max-width: none !important;
+            border-radius: 12px;
+        }
+        @media (max-width: 960px) {
+            .leaflet-popup-content > div > div[style*="display: flex"] {
+                flex-direction: column !important;
+            }
+        }
+    `;
+    document.head.appendChild(styleEl);
+})();
+
+
 // Inicializar o mapa
 var map = L.map('map').setView([LAT, LNG], 15);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+    maxZoom: 19
 }).addTo(map);
 
 // Ícone personalizado
@@ -22,15 +51,13 @@ var icon = L.divIcon({
 
 var marker = null;
 var chartInstance = null;
-var cacheAtmosfera = null;
-var cacheAtmosferaTimestamp = 0;
 
 
 // ============ HELPERS DE FORMATO DE DATA ============
 
 /**
- * Aceita 'YYYY-MM-DD' (input HTML) ou 'DD/MM' (resposta da API).
- * Sempre retorna 'DD/MM'.
+ * Aceita 'YYYY-MM-DD' (input HTML) ou 'DD/MM' ou 'DD/MM/AAAA' (resposta da API).
+ * Sempre retorna 'DD/MM' (curto, para eixos de gráfico).
  */
 function formatarDataCurta(data) {
     if (!data) return '--';
@@ -39,21 +66,33 @@ function formatarDataCurta(data) {
         var p = data.split('-');
         return p[2] + '/' + p[1];
     }
-    // já é 'DD/MM'
-    return data;
+    // 'DD/MM' ou 'DD/MM/AAAA'
+    var p2 = data.split('/');
+    return p2[0] + '/' + p2[1];
 }
 
 /**
- * Aceita 'YYYY-MM-DD' ou 'DD/MM' e retorna 'DD/MM/AAAA'.
- * Para 'DD/MM' sem ano, adiciona o ano selecionado (ou o atual).
+ * Aceita 'YYYY-MM-DD', 'DD/MM' ou 'DD/MM/AAAA' e retorna 'DD/MM/AAAA'.
+ * - Se for 'DD/MM' sem ano, usa o ano selecionado no <select> (ou o atual).
+ * - Se já vier com ano, usa o próprio.
  */
 function formatarDataCompleta(data, anoFallback) {
     if (!data) return '--';
+
+    // 'YYYY-MM-DD'
     if (data.indexOf('-') > -1) {
         var p = data.split('-');
         return p[2] + '/' + p[1] + '/' + p[0];
     }
+
     var p2 = data.split('/');
+
+    // 'DD/MM/AAAA' — já tem ano
+    if (p2.length === 3) {
+        return p2[0] + '/' + p2[1] + '/' + p2[2];
+    }
+
+    // 'DD/MM' — usa fallback
     var ano = anoFallback
         || parseInt(document.getElementById('ano-escolhido').value, 10)
         || new Date().getFullYear();
@@ -61,34 +100,14 @@ function formatarDataCompleta(data, anoFallback) {
 }
 
 /**
- * Converte 'YYYY-MM-DD' (input HTML) em 'DD/MM' (formato que a API espera).
+ * Converte 'YYYY-MM-DD' (input HTML) em 'DD/MM/AAAA' (formato que a API aceita).
+ * Mandar com ano garante que o backend pegue a data exata, não a de outro ano.
  */
 function isoParaDDMM(iso) {
     if (!iso) return null;
-    var p = iso.split('-');
+    var p = iso.split('-');           // ["2025","10","14"]
     if (p.length !== 3) return null;
-    return p[2] + '/' + p[1];
-}
-
-
-// ============ ATMOSFERA ============
-
-async function obterDadosAtmosfera() {
-    var agora = Date.now();
-    if (cacheAtmosfera && (agora - cacheAtmosferaTimestamp) < 600000) {
-        return cacheAtmosfera;
-    }
-    try {
-        var resp = await fetch('/api/atmosfera');
-        if (resp.ok) {
-            cacheAtmosfera = await resp.json();
-            cacheAtmosferaTimestamp = agora;
-            return cacheAtmosfera;
-        }
-    } catch (e) {
-        console.log('Dados atmosfericos indisponiveis');
-    }
-    return null;
+    return p[2] + '/' + p[1] + '/' + p[0];   // "14/10/2025"
 }
 
 
@@ -116,7 +135,7 @@ async function buscarPorData() {
         return;
     }
 
-    // Converte YYYY-MM-DD -> DD/MM (formato da API)
+    // Converte YYYY-MM-DD -> DD/MM/AAAA (formato que a API aceita)
     var dataDDMM = isoParaDDMM(dataISO);
 
     document.getElementById('loading').style.display = 'block';
@@ -132,7 +151,11 @@ async function buscarPorData() {
         }
         var dados = await response.json();
         await atualizarMapa(dados);
-        atualizarStatus('Mostrando dados de: ' + formatarDataCompleta(dataISO));
+
+        // Prefere data_iso (Opção B) para mostrar a data completa
+        var dataExibida = dados.data_iso || dados.data;
+        atualizarStatus('Mostrando dados de: ' + formatarDataCompleta(dataExibida));
+
         document.getElementById('loading').style.display = 'none';
     } catch (error) {
         console.error('Erro:', error);
@@ -141,53 +164,11 @@ async function buscarPorData() {
     }
 }
 
-async function atualizarDadosEstacao() {
-    document.getElementById('loading').style.display = 'block';
-    document.getElementById('loading').innerHTML = '<i class="fas fa-spinner"></i><p>Atualizando dados do ISARH/UFRA...</p>';
-    try {
-        var response = await fetch('/api/atualizar');
-        var resultado = await response.json();
-        if (resultado.status === 'sucesso') {
-            alert('Dados atualizados!\n\nData: ' + resultado.data + '\nTemperatura: ' + resultado.temperatura + ' C\nUmidade: ' + resultado.umidade + '%\nTotal de registros: ' + resultado.total_registros);
-            cacheAtmosfera = null;
-            buscarUltimaObservacao();
-        } else {
-            alert('Erro: ' + (resultado.mensagem || 'Falha na atualizacao'));
-        }
-    } catch (error) {
-        console.error('Erro:', error);
-        alert('Erro ao conectar com o servidor');
-    }
-    document.getElementById('loading').style.display = 'none';
-}
-
 function voltarUltima() {
     document.getElementById('data-escolhida').value = '';
     document.getElementById('loading').style.display = 'block';
     document.getElementById('loading').innerHTML = '<i class="fas fa-spinner"></i><p>Carregando ultima observacao...</p>';
     buscarUltimaObservacao();
-}
-
-function agoraFormatado() {
-    var d = new Date();
-    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-}
-
-function hojeFormatado() {
-    var d = new Date();
-    return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
-}
-
-function calcularSensacaoLocal(temp, umidade) {
-    if (temp === '--' || umidade === '--') return '--';
-    var T = parseFloat(temp);
-    var U = parseFloat(umidade);
-    if (T >= 27) {
-        var Tf = (T * 9 / 5) + 32;
-        var hi = -42.379 + 2.04901523 * Tf + 10.14333127 * U - 0.22475541 * Tf * U - 0.00683783 * Tf * Tf - 0.05481717 * U * U + 0.00122874 * Tf * Tf * U + 0.00085282 * Tf * U * U - 0.00000199 * Tf * Tf * U * U;
-        return Math.round(((hi - 32) * 5 / 9) * 10) / 10;
-    }
-    return T;
 }
 
 
@@ -323,10 +304,7 @@ function aoTrocarAno() {
     input.max = ano + '-12-31';
     input.value = '';
 
-    // Limpa cache de atmosfera e recarrega o mapa com os dados do ano
-    // (mantemos o `/api/ultima` porque ele já retorna o último dia global;
-    //  se quiser o último dia do ano, o backend precisa de um endpoint novo)
-    cacheAtmosfera = null;
+    // Recarrega o mapa com a última observação disponível
     buscarUltimaObservacao();
 
     // Se o gráfico estiver aberto, recarrega com o novo ano
@@ -344,7 +322,6 @@ async function atualizarMapa(dados) {
         console.warn('Dados nao recebidos');
         return;
     }
-    var dadosAtmosfera = await obterDadosAtmosfera();
 
     var temp09 = dados.temperatura_09h != null ? dados.temperatura_09h : '--';
     var umid09 = dados.umidade_09h != null ? dados.umidade_09h : '--';
@@ -353,32 +330,20 @@ async function atualizarMapa(dados) {
     var tempMax = dados.temp_max != null ? dados.temp_max : '--';
     var sensacao09 = dados.sensacao_termica || '';
     var obs = dados.observadores || 'Membros do Grupo ISPAAm';
-    var dataObs = dados.data || '--';
 
-    // Dados ECMWF
-    var tempAtual = '--', umidAtual = '--', sensacaoAtual = '--', ceuAtual = '--';
-    var ventoAtual = '--', chuvaAtual = '--', precipAtual = '--';
-    var tempMaxAtual = '--', tempMinAtual = '--';
+    // Data para exibir: prefere data_iso (Opção B); fallback para data (dd/mm)
+    var dataObs = dados.data_iso || dados.data || '--';
 
-    if (dadosAtmosfera && dadosAtmosfera.status === 'sucesso') {
-        tempAtual = dadosAtmosfera.temperatura.atual || '--';
-        umidAtual = dadosAtmosfera.temperatura.umidade || '--';
-        ceuAtual = dadosAtmosfera.ceu.descricao || '--';
-        ventoAtual = dadosAtmosfera.vento.velocidade + ' m/s (' + dadosAtmosfera.vento.direcao_cardeal + ')';
-        chuvaAtual = dadosAtmosfera.chuva.chovendo ? 'Chovendo' : 'Sem chuva';
-        precipAtual = dadosAtmosfera.chuva.precipitacao_mm + ' mm';
-        tempMaxAtual = dadosAtmosfera.temperatura.maxima || '--';
-        tempMinAtual = dadosAtmosfera.temperatura.minima || '--';
-        if (tempAtual !== '--' && umidAtual !== '--') {
-            sensacaoAtual = calcularSensacaoLocal(tempAtual, umidAtual);
-        }
-    }
-
-    // Balanço de energia (rota aceita <path:data> agora)
+    // Balanço de energia (rota aceita <path:data>)
     var balancoEnergia = null;
     try {
-        var dataParaBalanco = dados.data || dataObs;
-        if (dataParaBalanco && dataParaBalanco !== '--') {
+        // A rota /api/balanco/<path:data> aceita dd/mm ou dd/mm/aaaa.
+        // Mandamos no formato dd/mm/aaaa para garantir a data exata.
+        var dataParaBalanco = dados.data_iso
+            ? (dados.data_iso.split('-')[2] + '/' + dados.data_iso.split('-')[1] + '/' + dados.data_iso.split('-')[0])
+            : (dados.data || null);
+
+        if (dataParaBalanco) {
             var respBalanco = await fetch('/api/balanco/' + dataParaBalanco);
             if (respBalanco.ok) {
                 balancoEnergia = await respBalanco.json();
@@ -388,14 +353,15 @@ async function atualizarMapa(dados) {
         console.log('Modulo agrometeorologico indisponivel');
     }
 
+    // Conteúdo do popup: 3 cards (Estação / Agromet / Balanço de Energia)
     var popupContent = '' +
-        '<div style="font-family: Segoe UI, sans-serif; min-width: 680px; padding: 4px;">' +
+        '<div style="font-family: Segoe UI, sans-serif; min-width: 820px; padding: 4px;">' +
 
         '<div style="text-align: center; font-size: 15px; font-weight: 700; color: #1a3a5c; margin-bottom: 10px; letter-spacing: 0.5px;">' + NOME + '</div>' +
 
         '<div style="display: flex; gap: 8px; align-items: stretch;">' +
 
-        // ============ ESTAÇÃO (09:00) ============
+        // ============ CARD 1: ESTAÇÃO (09:00) ============
         '<div style="flex: 1; background: linear-gradient(135deg, #e8f4fd, #d4eafc); border-radius: 10px; padding: 12px; border-top: 4px solid #2e86c1;">' +
         '<div style="font-size: 10px; font-weight: 700; color: #1a5276; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px;">Estacao &bull; 09:00</div>' +
         '<div style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px;">' +
@@ -411,33 +377,11 @@ async function atualizarMapa(dados) {
         '<div><span style="color: #777;">Máxima:</span> <span style="font-weight: 600; color: #e67e22;">' + tempMax + ' °C</span><span style="font-size: 9px; color: #999;"> (dia anterior)</span></div>' +
         '<div><span style="color: #777;">Mínima:</span> <span style="font-weight: 600; color: #3498db;">' + tempMin + ' °C</span></div>' +
         '</div>' +
-        '<div style="font-size: 8px; color: #999; margin-top: 6px; text-align: right;"><b>ISARH</b></div>' +
+        '<div style="font-size: 8px; color: #999; margin-top: 6px; text-align: right;"><b>ISPAAM</b></div>' +
         '<div style="font-size: 9px; color: #777; margin-top: 2px; text-align: right; font-weight: 600;">' + obs + '</div>' +
         '</div>' +
 
-        // ============ AGORA (ECMWF) ============
-        (dadosAtmosfera && dadosAtmosfera.status === 'sucesso' ?
-        '<div style="flex: 1; background: linear-gradient(135deg, #f0e8f8, #e2d4f0); border-radius: 10px; padding: 12px; border-top: 4px solid #7b4fa0;">' +
-        '<div style="font-size: 10px; font-weight: 700; color: #5a3478; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px;">Agora &bull; ' + agoraFormatado() + '</div>' +
-        '<div style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px;">' +
-        '<span style="font-size: 26px; font-weight: 700; color: #6c3fa0;">' + tempAtual + '</span>' +
-        '<span style="font-size: 23px; color: #6c3fa0;">°C</span>' +
-        '</div>' +
-        '<div style="font-size: 11px; color: #666; margin-bottom: 4px;">' + hojeFormatado() + '</div>' +
-        (sensacaoAtual !== '--' ? '<div style="font-size: 12px; color: #e67e22; margin-bottom: 6px; font-weight: 500;">Sensacao: ' + sensacaoAtual + ' C</div>' : '') +
-        '<div style="font-size: 11px; line-height: 1.6;">' +
-        '<div><span style="color: #777;">Umidade:</span> <span style="font-weight: 600; color: #333;">' + umidAtual + '%</span></div>' +
-        '<div><span style="color: #777;">Vento:</span> <span style="font-weight: 600; color: #333;">' + ventoAtual + '</span></div>' +
-        '<div><span style="color: #777;">Precip.:</span> <span style="font-weight: 600; color: #333;">' + precipAtual + '</span></div>' +
-        '<div><span style="color: #777;">Ceu:</span> <span style="font-weight: 600; color: #333;">' + ceuAtual + '</span></div>' +
-        '<div><span style="color: #777;">Máxima:</span> <span style="font-weight: 600; color: #e67e22;">' + tempMaxAtual + ' °C</span><span style="font-size: 9px; color: #999;"> (previsão)</span></div>' +
-        '<div><span style="color: #777;">Mínima:</span> <span style="font-weight: 600; color: #3498db;">' + tempMinAtual + ' °C</span></div>' +
-        '</div>' +
-        '<div style="font-size: 11px; margin-top: 4px; font-weight: 500; color: #555;">' + chuvaAtual + '</div>' +
-        '<div style="font-size: 8px; color: #999; margin-top: 6px; text-align: right;"><b>ECMWF</b></div>' +
-        '</div>' : '') +
-
-        // ============ MÓDULO AGROMETEOROLÓGICO ============
+        // ============ CARD 2: MÓDULO AGROMETEOROLÓGICO ============
         (balancoEnergia && !balancoEnergia.erro ?
         '<div style="flex: 1; background: linear-gradient(135deg, #e8f8e8, #d4f0d4); border-radius: 10px; padding: 12px; border-top: 4px solid #27ae60;">' +
         '<div style="font-size: 10px; font-weight: 700; color: #1e7e34; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">Modulo Agrometeorologico</div>' +
@@ -445,17 +389,38 @@ async function atualizarMapa(dados) {
         '<div><span style="color: #777;">Ra (Q0):</span></div> <div><span style="font-weight: 600; color: #333; white-space: nowrap;">' + balancoEnergia.Ra_Q0.valor + ' MJ/m²/dia</span></div>' +
         '<div><span style="color: #777;">Rs:</span></div> <div><span style="font-weight: 600; color: #333; white-space: nowrap;">' + balancoEnergia.Rs.valor + ' MJ/m²/dia</span></div>' +
         '<div><span style="color: #777;">PAR:</span></div> <div><span style="font-weight: 600; color: #333; white-space: nowrap;">' + balancoEnergia.PAR.valor + ' MJ/m²/dia</span></div>' +
-        '<div><span style="color: #777;">Rn:</span></div> <div><span style="font-weight: 600; color: #333; white-space: nowrap;">' + balancoEnergia.Rn.valor + ' MJ/m²/dia *</span></div>' +
         '<div><span style="color: #777;">Kt:</span></div> <div><span style="font-weight: 600; color: #333; white-space: nowrap;">' + balancoEnergia.Kt.valor + '</span></div>' +
         '<div><span style="color: #777;">Fotoperiodo:</span></div> <div><span style="font-weight: 600; color: #333; white-space: nowrap;">' + balancoEnergia.fotoperiodo.valor + '</span></div>' +
         '<div><span style="color: #777;">Graus-dia:</span></div> <div><span style="font-weight: 600; color: #333; white-space: nowrap;">' + balancoEnergia.graus_dia.valor + ' °C (Tb=' + balancoEnergia.graus_dia.Tbase + ' °C)</span></div>' +
         '<div><span style="color: #777;">ETo:</span></div> <div><span style="font-weight: 600; color: #333; white-space: nowrap;">' + balancoEnergia.ETo.valor + ' mm/dia</span></div>' +
+        '<div><span style="color: #777; font-size: 10px;">u₂ adotado:</span></div> <div><span style="font-weight: 600; color: #999; font-size: 10px; white-space: nowrap;">2,0 m/s <i>(padrão FAO)</i></span></div>' +
         '</div>' +
-        '<div style="font-size: 8px; color: #999; margin-top: 4px; text-align: right;">* Rn estimado para fins didaticos</div>' +
+        '<div style="font-size: 8px; color: #999; margin-top: 4px; text-align: right; line-height: 1.4;">' +
+        'Penman-Monteith (FAO-56) · G ≈ 0<br>' +
+        'u₂ = 2,0 m/s <b>(valor padrão, não medido)</b>' +
+        '</div>' +
         '</div>' : '') +
 
+        // ============ CARD 3: BALANÇO DE ENERGIA ============
+        (balancoEnergia && !balancoEnergia.erro ?
+        '<div style="flex: 1; background: linear-gradient(135deg, #fdf4e3, #fbecd2); border-radius: 10px; padding: 12px; border-top: 4px solid #e67e22;">' +
+        '<div style="font-size: 10px; font-weight: 700; color: #a0522d; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">Balanco de Energia</div>' +
+        '<div style="display: grid; grid-template-columns: auto 1fr; gap: 2px 6px; font-size: 11px;">' +
+        '<div><span style="color: #777;">☀ Ondas Curtas (Rns):</span></div> <div><span style="font-weight: 600; color: #c0392b; white-space: nowrap;">' + balancoEnergia.Rns.valor + ' MJ/m²/dia</span></div>' +
+        '<div><span style="color: #777;">🌙 Ondas Longas (Rnl) ↓:</span></div> <div><span style="font-weight: 600; color: #6c3fa0; white-space: nowrap;">- ' + balancoEnergia.Rnl.valor + ' MJ/m²/dia</span></div>' +
+        '<div style="border-top: 1px dashed #ccc; grid-column: 1 / -1; margin: 3px 0;"></div>' +
+        '<div><span style="color: #777;">⚖ Saldo (Rn):</span></div> <div><span style="font-weight: 700; color: #1e7e34; white-space: nowrap;">' + balancoEnergia.Rn.valor + ' MJ/m²/dia</span></div>' +
         '</div>' +
-        '</div>';
+        '<div style="font-size: 9px; color: #999; margin-top: 6px; padding-top: 4px; border-top: 1px dotted #ddd; line-height: 1.4;">' +
+        'Rso (céu claro): <b>' + balancoEnergia.Rso.valor + '</b> MJ/m²/dia<br>' +
+        'Kt (claridade): <b>' + balancoEnergia.Kt.valor + '</b> ' +
+        '<span style="color: #bbb;">(0 = nublado, 0.75+ = limpo)</span>' +
+        '</div>' +
+        '<div style="font-size: 8px; color: #999; margin-top: 4px; text-align: right;">FAO-56: Rn = Rns − Rnl</div>' +
+        '</div>' : '') +
+
+        '</div>' +   // fecha a linha flex
+        '</div>';    // fecha o container externo
 
     if (marker) {
         marker.setLatLng([LAT, LNG]);
@@ -473,7 +438,6 @@ function atualizarStatus(texto) {
 }
 
 function recarregar() {
-    cacheAtmosfera = null;
     document.getElementById('loading').style.display = 'block';
     document.getElementById('loading').innerHTML = '<i class="fas fa-spinner"></i><p>Recarregando dados...</p>';
     buscarUltimaObservacao();
