@@ -9,7 +9,7 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 
-from scraper import atualizar_dados as atualizar_dados_scraper
+# from scraper import atualizar_dados as atualizar_dados_scraper  # descontinuado no IC II
 from atmosfera import obter_condicoes_atmosfericas
 from sensacao import calcular_sensacao_termica, classificar_sensacao
 from balanco_energia import calcular_balanco_completo
@@ -116,7 +116,6 @@ def parece_nome(texto):
 
     texto_lower = texto.lower()
 
-    # Palavras-chave que indicam anotação, não nome
     palavras_chave = [
         "tanque", "chuva", "nublado", "visibilidade", "nuvem", "céu", "ceu",
         "paralisação", "paralisacao", "greve", "termometro", "termômetro",
@@ -131,11 +130,9 @@ def parece_nome(texto):
     if any(p in texto_lower for p in palavras_chave):
         return False
 
-    # Anotações tendem a ser longas
     if len(texto) > 40:
         return False
 
-    # Símbolos típicos de anotação
     if any(s in texto for s in ["*", "?", "."]):
         return False
 
@@ -191,7 +188,6 @@ def novo_registro_agrupado(data_iso, dia_semana):
         "date": data_iso_para_dd_mm(data_iso),
         "date_iso": data_iso,
         "dia_semana": dia_semana,
-        # 09:00 (protocolo completo)
         "temp_09h": None,
         "humidity_09h": None,
         "wind_09h": None,
@@ -201,12 +197,10 @@ def novo_registro_agrupado(data_iso, dia_semana):
         "evaporation_24h": None,
         "observers": None,
         "evento_09h": None,
-        # 15:00 (protocolo reduzido)
         "temp_15h": None,
         "humidity_15h": None,
         "wind_15h": None,
         "evento_15h": None,
-        # metadados
         "protocolo_09h": None,
         "protocolo_15h": None,
     }
@@ -216,11 +210,6 @@ def novo_registro_agrupado(data_iso, dia_semana):
 # Carregamento dos dados
 # ---------------------------------------------------------------------------
 def carregar_dados():
-    """
-    Busca TODAS as observações no banco, agrupa por data (09:00 + 15:00)
-    e retorna no formato que o frontend espera.
-    Ordenado cronologicamente.
-    """
     linhas = consultar_banco("""
         SELECT data_iso, dia_semana, hora_local, protocolo,
                tar, ur, direcao_vento,
@@ -243,9 +232,6 @@ def carregar_dados():
 
 
 def carregar_dados_por_ano(ano):
-    """
-    Igual a carregar_dados(), mas filtra por ano específico (YYYY).
-    """
     linhas = consultar_banco("""
         SELECT data_iso, dia_semana, hora_local, protocolo,
                tar, ur, direcao_vento,
@@ -273,12 +259,10 @@ def carregar_dados_por_data(data_dd_mm):
     Aceita 'dd/mm' OU 'dd/mm/aaaa'.
     - Com ano (dd/mm/aaaa): filtra exatamente aquela data.
     - Sem ano (dd/mm): pega a data MAIS RECENTE que casa com o sufixo.
-    Retorna um registro agrupado ou None.
     """
     partes = data_dd_mm.split("/")
 
     if len(partes) == 3:
-        # dd/mm/aaaa — data exata
         dia, mes, ano = partes
         alvo = f"{ano}-{mes.zfill(2)}-{dia.zfill(2)}"
         linhas = consultar_banco("""
@@ -291,7 +275,6 @@ def carregar_dados_por_data(data_dd_mm):
             ORDER BY hora_local ASC
         """, (alvo,))
     elif len(partes) == 2:
-        # dd/mm — pega a data mais recente que casa
         dia, mes = partes
         sufixo = f"-{mes.zfill(2)}-{dia.zfill(2)}"
         linhas = consultar_banco("""
@@ -309,7 +292,6 @@ def carregar_dados_por_data(data_dd_mm):
     if not linhas:
         return None
 
-    # Agrupa APENAS as linhas da data escolhida (a primeira, por ordenação)
     data_alvo = linhas[0]["data_iso"]
     linhas_mesma_data = [l for l in linhas if l["data_iso"] == data_alvo]
 
@@ -331,13 +313,12 @@ def montar_resposta_observacao(registro):
     sensacao = calcular_sensacao_termica(temp, umidade, vento)
     classificacao = classificar_sensacao(sensacao)
 
-    # Separa observador (nome) de notas (anotação livre)
     obs_cru = registro.get("observers")
     observadores, notas = separar_observadores(obs_cru)
 
     return {
         "data": registro.get("date"),
-        "data_iso": registro.get("date_iso"),          # ← NOVO (Opção B)
+        "data_iso": registro.get("date_iso"),
         "dia_semana": registro.get("dia_semana"),
         "temperatura_09h": arredondar(temp, 2),
         "umidade_09h": arredondar(umidade, 2),
@@ -353,8 +334,8 @@ def montar_resposta_observacao(registro):
         "vento_15h": registro.get("wind_15h"),
         "evento_09h": registro.get("evento_09h"),
         "evento_15h": registro.get("evento_15h"),
-        "observadores": observadores,   # só nome (ou None)
-        "notas": notas,                 # só anotação (ou None)
+        "observadores": observadores,
+        "notas": notas,
         "latitude": LATITUDE,
         "longitude": LONGITUDE,
         "estacao": NOME_ESTACAO,
@@ -362,7 +343,7 @@ def montar_resposta_observacao(registro):
 
 
 # ---------------------------------------------------------------------------
-# Error handler para erros de banco
+# Error handler
 # ---------------------------------------------------------------------------
 @app.errorhandler(RuntimeError)
 def handle_runtime_error(e):
@@ -374,7 +355,6 @@ def handle_runtime_error(e):
 # ---------------------------------------------------------------------------
 @app.route("/")
 def index():
-    # Descobre o range de datas disponível no banco
     rows = consultar_banco("""
         SELECT MIN(data_iso) AS min_data, MAX(data_iso) AS max_data
         FROM observacoes
@@ -410,10 +390,8 @@ def ultima_observacao():
     if not linhas:
         return jsonify({"erro": "Nenhum dado disponível"}), 404
 
-    # Pega a data da primeira linha (mais recente com tar preenchido)
     data_alvo = linhas[0]["data_iso"]
 
-    # Busca as duas observações dessa data
     linhas_data = consultar_banco("""
         SELECT data_iso, dia_semana, hora_local, protocolo,
                tar, ur, direcao_vento,
@@ -433,6 +411,7 @@ def ultima_observacao():
 
 @app.route("/api/atualizar")
 def atualizar_dados_estacao():
+    """DESCONTINUADO no IC II — scraper do ISARH substituido por planilha->JSON->banco."""
     return jsonify({
         "status": "descontinuado",
         "mensagem": "O scraper do ISARH foi descontinuado. Os dados agora vem via planilha -> JSON -> banco."
@@ -454,10 +433,12 @@ def todas_observacoes():
     Lista paginada de observações agrupadas.
 
     Parâmetros:
-      - limite (int, default 100)
-      - offset (int, default 0)
-      - ano    (int, opcional) — filtra por ano (ex.: 2026)
-      - formato (str, default 'tratado'):
+      - limite    (int, default 100)
+      - offset    (int, default 0)
+      - ano       (int, opcional) — filtra por ano (ex.: 2026)
+      - com_dados (bool, default 'false') — se 'true', retorna apenas
+                   registros com temperatura das 09h preenchida
+      - formato   (str, default 'tratado'):
           'tratado' -> registros convertidos por montar_resposta_observacao
           'bruto'   -> registros agrupados crus (útil pra debug)
     """
@@ -465,11 +446,17 @@ def todas_observacoes():
     offset = request.args.get("offset", default=0, type=int)
     ano = request.args.get("ano", type=int)
     formato = request.args.get("formato", default="tratado", type=str).lower()
+    com_dados = request.args.get("com_dados", default="false", type=str).lower() == "true"
 
     if ano:
         dados = carregar_dados_por_ano(ano)
     else:
         dados = carregar_dados()
+
+    # Filtra apenas registros que tem temperatura das 09h preenchida.
+    # Util para o grafico (evita retornar dias sem dado no fim do periodo).
+    if com_dados:
+        dados = [d for d in dados if d.get("temp_09h") is not None]
 
     paginado = dados[offset:offset + limite] if dados else []
 
@@ -484,6 +471,7 @@ def todas_observacoes():
         "limite": limite,
         "ano": ano,
         "formato": formato,
+        "com_dados": com_dados,
         "dados": itens,
         "estacao": {
             "nome": NOME_ESTACAO,
@@ -577,8 +565,6 @@ def balanco_energia(data):
     if not all(v is not None for v in (temp, umidade, temp_max, temp_min)):
         return jsonify({"erro": "Dados insuficientes para o cálculo"}), 400
 
-    # Converter dd/mm ou dd/mm/aaaa para YYYY-MM-DD (formato esperado pelo
-    # calcular_balanco_completo, que usa datetime.strptime(data, '%Y-%m-%d'))
     data_iso = registro.get("date_iso")
     if not data_iso:
         return jsonify({"erro": "Data inválida para cálculo"}), 400
@@ -588,7 +574,7 @@ def balanco_energia(data):
         temp_max=temp_max,
         temp_min=temp_min,
         umidade=umidade,
-        data=data_iso,          # ← agora vai YYYY-MM-DD, não dd/mm/aaaa
+        data=data_iso,
         latitude=LATITUDE,
         Rs_medido=None,
     )
