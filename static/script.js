@@ -6,9 +6,6 @@ var NOME = body.dataset.nome;
 
 
 // ============ OVERRIDE DO POPUP DO LEAFLET ============
-// O Leaflet limita a largura do popup em ~300px por padrão, o que faz o
-// conteúdo com min-width: 820px vazar pra fora da div. Aqui liberamos a
-// largura e reduzimos o padding interno. Injetado uma vez só no <head>.
 (function liberarPopupLeaflet() {
     var styleEl = document.createElement('style');
     styleEl.id = 'leaflet-popup-override';
@@ -55,31 +52,19 @@ var chartInstance = null;
 
 // ============ HELPERS DE FORMATO DE DATA ============
 
-/**
- * Aceita 'YYYY-MM-DD' (input HTML) ou 'DD/MM' ou 'DD/MM/AAAA' (resposta da API).
- * Sempre retorna 'DD/MM' (curto, para eixos de gráfico).
- */
 function formatarDataCurta(data) {
     if (!data) return '--';
     if (data.indexOf('-') > -1) {
-        // 'YYYY-MM-DD'
         var p = data.split('-');
         return p[2] + '/' + p[1];
     }
-    // 'DD/MM' ou 'DD/MM/AAAA'
     var p2 = data.split('/');
     return p2[0] + '/' + p2[1];
 }
 
-/**
- * Aceita 'YYYY-MM-DD', 'DD/MM' ou 'DD/MM/AAAA' e retorna 'DD/MM/AAAA'.
- * - Se for 'DD/MM' sem ano, usa o ano selecionado no <select> (ou o atual).
- * - Se já vier com ano, usa o próprio.
- */
 function formatarDataCompleta(data, anoFallback) {
     if (!data) return '--';
 
-    // 'YYYY-MM-DD'
     if (data.indexOf('-') > -1) {
         var p = data.split('-');
         return p[2] + '/' + p[1] + '/' + p[0];
@@ -87,27 +72,21 @@ function formatarDataCompleta(data, anoFallback) {
 
     var p2 = data.split('/');
 
-    // 'DD/MM/AAAA' — já tem ano
     if (p2.length === 3) {
         return p2[0] + '/' + p2[1] + '/' + p2[2];
     }
 
-    // 'DD/MM' — usa fallback
     var ano = anoFallback
         || parseInt(document.getElementById('ano-escolhido').value, 10)
         || new Date().getFullYear();
     return p2[0] + '/' + p2[1] + '/' + ano;
 }
 
-/**
- * Converte 'YYYY-MM-DD' (input HTML) em 'DD/MM/AAAA' (formato que a API aceita).
- * Mandar com ano garante que o backend pegue a data exata, não a de outro ano.
- */
 function isoParaDDMM(iso) {
     if (!iso) return null;
-    var p = iso.split('-');           // ["2025","10","14"]
+    var p = iso.split('-');
     if (p.length !== 3) return null;
-    return p[2] + '/' + p[1] + '/' + p[0];   // "14/10/2025"
+    return p[2] + '/' + p[1] + '/' + p[0];
 }
 
 
@@ -135,7 +114,6 @@ async function buscarPorData() {
         return;
     }
 
-    // Converte YYYY-MM-DD -> DD/MM/AAAA (formato que a API aceita)
     var dataDDMM = isoParaDDMM(dataISO);
 
     document.getElementById('loading').style.display = 'block';
@@ -152,7 +130,6 @@ async function buscarPorData() {
         var dados = await response.json();
         await atualizarMapa(dados);
 
-        // Prefere data_iso (Opção B) para mostrar a data completa
         var dataExibida = dados.data_iso || dados.data;
         atualizarStatus('Mostrando dados de: ' + formatarDataCompleta(dataExibida));
 
@@ -197,15 +174,18 @@ async function carregarGrafico(dias) {
     try {
         var ano = anoSelecionado();
 
-        // Pega total de dias (com filtro de ano)
-        var urlEstacao = '/api/estacao' + (ano ? '?ano=' + ano : '');
-        var respInfo = await fetch(urlEstacao);
-        var info = await respInfo.json();
-        var totalDias = info.total_dias || 0;
+        // Passo 1: descobrir quantos registros COM DADOS existem no ano
+        // (com_dados=true filtra WHERE tar IS NOT NULL no backend)
+        var urlContagem = '/api/todas?limite=1&com_dados=true';
+        if (ano) urlContagem += '&ano=' + ano;
+        var respContagem = await fetch(urlContagem);
+        var dadosContagem = await respContagem.json();
+        var totalComDados = dadosContagem.total || 0;
 
-        // Calcula offset para pegar os últimos `dias`
-        var offset = Math.max(0, totalDias - dias);
-        var urlTodas = '/api/todas?limite=' + dias + '&offset=' + offset;
+        // Passo 2: calcular offset para pegar os ULTIMOS `dias` que TEM dado
+        var offset = Math.max(0, totalComDados - dias);
+
+        var urlTodas = '/api/todas?limite=' + dias + '&offset=' + offset + '&com_dados=true';
         if (ano) urlTodas += '&ano=' + ano;
 
         var resp = await fetch(urlTodas);
@@ -290,24 +270,17 @@ async function carregarGrafico(dias) {
     }
 }
 
-/**
- * Chamado quando o usuário troca o ano no <select>.
- * Atualiza o range de data e recarrega o mapa/gráfico.
- */
 function aoTrocarAno() {
     var ano = anoSelecionado();
     if (!ano) return;
 
-    // Ajusta limites do input de data
     var input = document.getElementById('data-escolhida');
     input.min = ano + '-01-01';
     input.max = ano + '-12-31';
     input.value = '';
 
-    // Recarrega o mapa com a última observação disponível
     buscarUltimaObservacao();
 
-    // Se o gráfico estiver aberto, recarrega com o novo ano
     var gc = document.getElementById('grafico-container');
     if (gc && gc.style.display === 'block') {
         carregarGrafico(7);
@@ -331,14 +304,10 @@ async function atualizarMapa(dados) {
     var sensacao09 = dados.sensacao_termica || '';
     var obs = dados.observadores || 'Membros do Grupo ISPAAm';
 
-    // Data para exibir: prefere data_iso (Opção B); fallback para data (dd/mm)
     var dataObs = dados.data_iso || dados.data || '--';
 
-    // Balanço de energia (rota aceita <path:data>)
     var balancoEnergia = null;
     try {
-        // A rota /api/balanco/<path:data> aceita dd/mm ou dd/mm/aaaa.
-        // Mandamos no formato dd/mm/aaaa para garantir a data exata.
         var dataParaBalanco = dados.data_iso
             ? (dados.data_iso.split('-')[2] + '/' + dados.data_iso.split('-')[1] + '/' + dados.data_iso.split('-')[0])
             : (dados.data || null);
@@ -353,7 +322,6 @@ async function atualizarMapa(dados) {
         console.log('Modulo agrometeorologico indisponivel');
     }
 
-    // Conteúdo do popup: 3 cards (Estação / Agromet / Balanço de Energia)
     var popupContent = '' +
         '<div style="font-family: Segoe UI, sans-serif; min-width: 820px; padding: 4px;">' +
 
@@ -419,8 +387,8 @@ async function atualizarMapa(dados) {
         '<div style="font-size: 8px; color: #999; margin-top: 4px; text-align: right;">FAO-56: Rn = Rns − Rnl</div>' +
         '</div>' : '') +
 
-        '</div>' +   // fecha a linha flex
-        '</div>';    // fecha o container externo
+        '</div>' +
+        '</div>';
 
     if (marker) {
         marker.setLatLng([LAT, LNG]);
