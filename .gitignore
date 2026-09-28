@@ -1,39 +1,77 @@
+# ==========================================================
 # Dados brutos (planilhas e JSONs — pesados, versionar via outro meio)
+# ==========================================================
 dados_brutos/**/*.xlsx
 dados_brutos/**/*.xls
 dados_brutos/**/*.csv
 dados_brutos/**/*.json
 dados_brutos/**/*.bak
+dados_brutos/**/*.backup_*
 
+# ==========================================================
+# Relatorios gerados automaticamente (nao versionar)
+# ==========================================================
+relatorio_import.txt
+relatorio_suspeitos.txt
+relatorio_*.txt
+relatorio_*.csv
+
+# ==========================================================
 # Ambientes virtuais
+# ==========================================================
 venv/
 .venv/
+env/
 
+# ==========================================================
 # Python
+# ==========================================================
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# Banco de dados (binário, gerado por script)
+# ==========================================================
+# Banco de dados (binario, gerado por script)
+# ==========================================================
 banco/*.db
 banco/*.db.bak
 banco/*.db-journal
+banco/*.sqlite
+banco/*.sqlite3
 
-# Dados brutos (planilhas e JSONs — pesados, versionar via outro meio)
-dados_brutos/**/*.xlsx
-dados_brutos/**/*.xls
-dados_brutos/**/*.csv
-dados_brutos/**/*.json
-dados_brutos/**/*.bak
-
-# Backups
+# ==========================================================
+# Backups (geral)
+# ==========================================================
 *.bak
 *.backup
+*.backup_*
+*.old
 
+# ==========================================================
 # Sistema
+# ==========================================================
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# IDE
+# ==========================================================
+# IDE / Editores
+# ==========================================================
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+
+# ==========================================================
+# Logs e temporarios
+# ==========================================================
+*.log
+*.tmp
+*.temp
+*.cache
