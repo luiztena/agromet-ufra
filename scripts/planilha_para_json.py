@@ -8,11 +8,12 @@ Converte uma aba específica de uma planilha .xlsx no JSON bruto do ISPAAM.
 - Converte time    -> 'hh:mm'
 - Converte números -> string com vírgula decimal (padrão do pipeline)
 - Ignora linhas completamente vazias.
-- Preserva o cabeçalho original (inclusive a coluna '  ' com dois espaços).
+- Normaliza cabeçalhos (espaços extras, aliases, ordem).
+- Trata a aba 2018 (layout diferente dos demais anos).
 
 Uso:
     python scripts/planilha_para_json.py "dados_brutos/planilhas/Dados TAB.xlsx" --aba 2026 -o dados_brutos/dados_2026.json
-    """
+"""
 
 import argparse
 import json
@@ -22,6 +23,55 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
+
+# ---------------------------------------------------------------------------
+# Mapeamentos de cabeçalho
+# ---------------------------------------------------------------------------
+
+# Aliases: variação -> nome canônico
+ALIASES_CABECALHO = {
+    "Data (dd/mm/aaaa)": "Data    (dd/mm/aaaa)",
+    "Hora (hh:mm)": "Hora local (hh:mm)",
+    "Prp (mm)": "Prp (mm/dia)",
+    "Ev (mm) coleta": "Ev (mm)",
+    "Ev (mm)*      coleta": "Ev (mm)",
+    "Ev (mm)*        após enchimento": "Ev (mm)*",
+    "Ev (mm)": "Ev (mm/dia)",   # cuidado: só vale quando a coluna era "Ev (mm)" simples
+    "Observações": "Observadores",
+}
+
+# Mapeamento POSICIONAL para a aba 2018 (layout diferente)
+# Índice no arquivo -> nome canônico
+MAPA_2018 = {
+    0: "Dia da semana",
+    1: "Data    (dd/mm/aaaa)",
+    2: "Hora local (hh:mm)",
+    3: "Hora UTC (hh:mm)",
+    4: "Tmáx (°C)",
+    5: "Tmin (°C)",
+    6: "Tméd (ºC)",      # 2018 tem Tméd na posição 6
+    7: "Tar (°C)",       # Tar está na 7 (nos outros anos é 6)
+    8: "TH2O ev (°C)",
+    9: "U2 (m/s)",
+    10: "Tar 2 (°C)",
+    11: "Prp (mm/dia)",
+    12: "Ev (mm)",
+    13: "Ev (mm)*",
+    14: "Patm (mbar)",
+    15: "Tmáx Real (ºC)",
+    16: "Tmin Real (ºC)",
+    17: "esTU",
+    18: "ea",
+    19: "es",
+    20: "UR (%)",
+    21: "Ev (mm/dia)",
+    22: "Observadores",
+}
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def formatar_valor(valor):
     """Converte um valor de célula do Excel no formato que queremos no JSON."""
@@ -46,7 +96,6 @@ def formatar_valor(valor):
 
     # números -> string com vírgula decimal (compatível com JSONs antigos)
     if isinstance(valor, (int, float)):
-        # Se for inteiro "redondo", mantém sem casas decimais
         if isinstance(valor, float) and valor.is_integer():
             return str(int(valor))
         return str(valor).replace(".", ",")
@@ -54,14 +103,56 @@ def formatar_valor(valor):
     return str(valor)
 
 
-def limpar_cabecalho(valor, idx):
-    """Normaliza o nome da coluna do cabeçalho."""
-    if valor is None:
+def normalizar_cabecalho(nome, idx):
+    """
+    Normaliza o nome da coluna do cabeçalho:
+    - Se for None, retorna 'coluna_<idx>'.
+    - Se tiver alias, aplica.
+    - Se tiver espaços múltiplos, colapsa.
+    """
+    if nome is None:
         return f"coluna_{idx}"
-    if isinstance(valor, str):
-        return valor  # preserva, inclusive '  '
-    return str(valor)
+    if not isinstance(nome, str):
+        return str(nome)
 
+    # Colapsa espaços múltiplos (mas preserva os nomes canônicos com 4 espaços)
+    nome_limpo = " ".join(nome.split()) if nome.strip() else nome
+
+    # Se tem alias exato, aplica
+    if nome in ALIASES_CABECALHO:
+        return ALIASES_CABECALHO[nome]
+    if nome_limpo in ALIASES_CABECALHO:
+        return ALIASES_CABECALHO[nome_limpo]
+
+    return nome
+
+
+def obter_cabecalho(cabecalho_raw, aba):
+    """
+    Retorna a lista de nomes de coluna a usar.
+    Se for a aba 2018, usa o MAPA_2018 (posicional).
+    Caso contrário, normaliza por nome.
+    """
+    if aba and aba.strip() == "2018":
+        # 2018 tem layout próprio — mapeamento posicional
+        cabecalho = []
+        for i in range(len(cabecalho_raw)):
+            cabecalho.append(MAPA_2018.get(i, f"coluna_{i}"))
+        print(f"  [2018] Usando mapeamento posicional especial")
+        return cabecalho
+
+    # Demais anos: normaliza por nome
+    return [normalizar_cabecalho(c, i) for i, c in enumerate(cabecalho_raw)]
+
+
+def coluna_data_canonica(aba):
+    """Retorna o nome canônico da coluna de data pra cada aba."""
+    return "Data    (dd/mm/aaaa)"
+
+
+# ---------------------------------------------------------------------------
+# Conversão
+# ---------------------------------------------------------------------------
 
 def converter(caminho_entrada: Path, caminho_saida: Path, aba: str = None):
     if not caminho_entrada.exists():
@@ -91,8 +182,10 @@ def converter(caminho_entrada: Path, caminho_saida: Path, aba: str = None):
         print("Planilha vazia.")
         sys.exit(1)
 
-    cabecalho = [limpar_cabecalho(c, i) for i, c in enumerate(cabecalho_raw)]
+    cabecalho = obter_cabecalho(cabecalho_raw, ws.title)
     print(f"Colunas ({len(cabecalho)}): {cabecalho[:6]}...")
+
+    coluna_data = coluna_data_canonica(ws.title)
 
     registros = []
     ignorados = 0
@@ -109,7 +202,7 @@ def converter(caminho_entrada: Path, caminho_saida: Path, aba: str = None):
             obj[cabecalho[i]] = formatar_valor(valor)
 
         # Filtro: pula linhas sem Data (linhas de molde do Excel)
-        if not obj.get("Data    (dd/mm/aaaa)"):
+        if not obj.get(coluna_data):
             ignorados += 1
             continue
 
@@ -125,6 +218,10 @@ def converter(caminho_entrada: Path, caminho_saida: Path, aba: str = None):
         print(f"  Linhas vazias ignoradas: {ignorados}")
     print(f"  Salvo em: {caminho_saida}")
 
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(

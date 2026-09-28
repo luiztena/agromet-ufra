@@ -9,6 +9,8 @@ Regras:
 - "" é convertido para NULL no banco.
 - Números em formato "33,60" viram 33.60 (float).
 - A coluna "protocolo" é preenchida com base na hora local.
+- A coluna "dia_semana" é normalizada para forma canônica
+  (minúscula, sem acento, completa: 'segunda', 'terca', etc).
 
 Uso:
     python scripts/importar_json.py
@@ -64,6 +66,9 @@ MAPA_CAMPOS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 def para_float(valor):
     if valor is None:
         return None
@@ -89,6 +94,57 @@ def limpar_texto(valor):
     return str(valor)
 
 
+def normalizar_dia_semana(valor):
+    """
+    Normaliza o dia da semana para forma canônica:
+    minúscula, sem acento, completa (segunda, terca, quarta, ...).
+    """
+    if not valor:
+        return None
+
+    valor = valor.strip().lower()
+
+    # Remove acentos
+    valor = (valor
+             .replace("á", "a").replace("ã", "a").replace("â", "a")
+             .replace("é", "e").replace("ê", "e")
+             .replace("í", "i")
+             .replace("ó", "o").replace("ô", "o").replace("õ", "o")
+             .replace("ú", "u")
+             .replace("ç", "c"))
+
+    # Mapeamento pra forma canônica
+    mapa = {
+        "seg": "segunda",
+        "segunda": "segunda",
+        "segunda-feira": "segunda",
+
+        "ter": "terca",
+        "terca": "terca",
+        "terca-feira": "terca",
+
+        "qua": "quarta",
+        "quarta": "quarta",
+        "quarta-feira": "quarta",
+
+        "qui": "quinta",
+        "quinta": "quinta",
+        "quinta-feira": "quinta",
+
+        "sex": "sexta",
+        "sexta": "sexta",
+        "sexta-feira": "sexta",
+
+        "sab": "sabado",
+        "sabado": "sabado",
+
+        "dom": "domingo",
+        "domingo": "domingo",
+    }
+
+    return mapa.get(valor, valor)
+
+
 def montar_data_iso(data_dd_mm, ano):
     if not data_dd_mm:
         return None
@@ -110,6 +166,23 @@ def extrair_ano(nome_arquivo):
     return int(m.group(1)) if m else None
 
 
+def obter_dia_semana(linha):
+    """
+    Tenta todas as chaves possíveis para o dia da semana,
+    e normaliza o valor.
+    """
+    valor_cru = (
+        linha.get("Dia da semana")   # 2018, 2019, 2020
+        or linha.get("coluna_0")     # 2023, 2024, 2025
+        or linha.get("  ")           # 2026 (dois espaços)
+        or linha.get(" ")            # 2021, 2022 (um espaço)
+    )
+    return normalizar_dia_semana(valor_cru)
+
+
+# ---------------------------------------------------------------------------
+# Importação
+# ---------------------------------------------------------------------------
 def importar_arquivo(caminho: Path):
     ano = extrair_ano(caminho.name)
     if ano is None:
@@ -164,7 +237,7 @@ def importar_arquivo(caminho: Path):
             "data_iso":      data_iso,
             "hora_local":    hora,
             "hora_utc":      limpar_texto(linha.get("Hora UTC (hh:mm)")),
-            "dia_semana":    limpar_texto(linha.get("  ")),
+            "dia_semana":    obter_dia_semana(linha),
             "protocolo":     protocolo,
         }
 

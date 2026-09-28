@@ -88,6 +88,56 @@ def arredondar(valor, casas=2):
         return valor
 
 
+def parece_nome(texto):
+    """
+    Heurística: retorna True se o texto parece nome de pessoa,
+    False se parece anotação livre (notas de campo).
+    """
+    if not texto:
+        return False
+
+    texto_lower = texto.lower()
+
+    # Palavras-chave que indicam anotação, não nome
+    palavras_chave = [
+        "tanque", "chuva", "nublado", "visibilidade", "nuvem", "céu", "ceu",
+        "paralisação", "paralisacao", "greve", "termometro", "termômetro",
+        "pluviômetro", "pluviometro", "pluv", "evento", "quarentena",
+        "capina", "limpeza", "bulbo", "danificado", "perca", "coleta",
+        "observador", "manutenção", "manutencao", "esvaziado", "transbordou",
+        "lavado", "sujo", "aberto", "quebrou", "automática", "automatica",
+        "preenchida", "medias", "médias", "limite", "inferior", "superior",
+        "roçagem", "rocagem", "parado", "quebrado",
+    ]
+
+    if any(p in texto_lower for p in palavras_chave):
+        return False
+
+    # Anotações tendem a ser longas
+    if len(texto) > 40:
+        return False
+
+    # Símbolos típicos de anotação
+    if any(s in texto for s in ["*", "?", "."]):
+        return False
+
+    return True
+
+
+def separar_observadores(valor):
+    """
+    Separa 'observador' de 'notas'.
+    Retorna uma tupla (observador, nota) — cada um pode ser None.
+    """
+    if not valor:
+        return (None, None)
+
+    if parece_nome(valor):
+        return (valor, None)
+    else:
+        return (None, valor)
+
+
 def agrupar_linha_em_registro(registro, linha):
     """
     Insere os dados de uma linha do banco em um registro agrupado por data.
@@ -244,6 +294,10 @@ def montar_resposta_observacao(registro):
     sensacao = calcular_sensacao_termica(temp, umidade, vento)
     classificacao = classificar_sensacao(sensacao)
 
+    # Separa observador (nome) de notas (anotação livre)
+    obs_cru = registro.get("observers")
+    observadores, notas = separar_observadores(obs_cru)
+
     return {
         "data": registro.get("date"),
         "dia_semana": registro.get("dia_semana"),
@@ -261,7 +315,8 @@ def montar_resposta_observacao(registro):
         "vento_15h": registro.get("wind_15h"),
         "evento_09h": registro.get("evento_09h"),
         "evento_15h": registro.get("evento_15h"),
-        "observadores": registro.get("observers"),
+        "observadores": observadores,   # só nome (ou None)
+        "notas": notas,                 # só anotação (ou None)
         "latitude": LATITUDE,
         "longitude": LONGITUDE,
         "estacao": NOME_ESTACAO,
