@@ -74,4 +74,4 @@ desktop.ini
 *.log
 *.tmp
 *.temp
-*.cache
+*.cachescripts/_debug/ 
