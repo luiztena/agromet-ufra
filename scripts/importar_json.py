@@ -14,13 +14,16 @@ Regras:
 
 VALIDAÇÃO (aplicada antes do INSERT):
 - tar fora de [15, 45] °C          -> NULL
-- tmax fora de [15, 45] °C         -> NULL
-- tmin fora de [10, 35] °C         -> NULL
-- ur fora de [0, 100] %            -> se > 100: cap em 100
-                                     se < 0:   NULL
+- tmax fora de [26, 45] °C         -> NULL
+- tmin fora de [18, 26] °C         -> NULL  (24-26 sinalizado, mas mantido)
+- ur fora de [0, 100] %            -> NULL
 - tmin > tmax                      -> ambos NULL
 - prp < 0 ou > 500 mm              -> NULL
 - ev_mm_dia < 0 ou > 20 mm         -> NULL
+- tmed sem tmax E tmin completos   -> NULL
+- ev_mm_dia sem ev_mm (input)      -> NULL
+- tmax entre 26-27 °C              -> sinalizado (mantido)
+- tmin entre 23-26 °C              -> sinalizado (mantido)
 
 Uso:
     python scripts/importar_json.py
@@ -55,12 +58,12 @@ PROTOCOLO_POR_HORA = {
 # ---------------------------------------------------------------------------
 REGRAS_VALIDACAO = [
     ("tar",        15.0,  45.0, "null"),
-    ("tmax",       15.0,  45.0, "null"),
-    ("tmin",       10.0,  35.0, "null"),
-    ("tmax_real",  15.0,  45.0, "null"),
-    ("tmin_real",  10.0,  35.0, "null"),
+    ("tmax",       26.0,  45.0, "null"),
+    ("tmin",       18.0,  26.0, "null"),   # ATUALIZADO 07/10/2026: era 23.0
+    ("tmax_real",  26.0,  45.0, "null"),
+    ("tmin_real",  18.0,  26.0, "null"),   # ATUALIZADO 07/10/2026: era 23.0
     ("tmed",       10.0,  40.0, "null"),
-    ("ur",          0.0, 100.0, "cap"),
+    ("ur",          0.0, 100.0, "null"),
     ("prp",         0.0, 500.0, "null"),
     ("ev_mm_dia",   0.0,  20.0, "null"),
 ]
@@ -68,8 +71,6 @@ REGRAS_VALIDACAO = [
 
 # ---------------------------------------------------------------------------
 # Mapeamento: chave no JSON (UTF-8 limpo) -> coluna no banco
-# O corrigir_mojibake() normaliza as chaves do JSON antes do lookup,
-# então aqui usamos os nomes corretos (com acento).
 # ---------------------------------------------------------------------------
 MAPA_CAMPOS = {
     "Tar (°C)":               "tar",
@@ -219,12 +220,10 @@ def validar_valor(valor, minimo, maximo, acao):
 
 
 def validar_registro(valores, data_iso=None, hora=None):
-    """
-    Aplica as regras de validação no dict de valores (já convertidos pra float).
-    Retorna (valores_ajustados, lista_avisos).
-    """
+    """Aplica validação. Retorna (valores_ajustados, avisos)."""
     avisos = []
 
+    # 1) Regras de faixa
     for campo, mn, mx, acao in REGRAS_VALIDACAO:
         if campo not in valores:
             continue
@@ -234,7 +233,7 @@ def validar_registro(valores, data_iso=None, hora=None):
             valores[campo] = novo
             avisos.append(f"{campo}: {motivo}")
 
-    # Regra cruzada tmin > tmax
+    # 2) tmin > tmax
     tmin = valores.get("tmin")
     tmax = valores.get("tmax")
     if tmin is not None and tmax is not None:
@@ -242,6 +241,29 @@ def validar_registro(valores, data_iso=None, hora=None):
             avisos.append(f"tmin ({tmin}) > tmax ({tmax}) -> ambos null")
             valores["tmin"] = None
             valores["tmax"] = None
+
+    # 3) tmed depende de tmax E tmin
+    tmed = valores.get("tmed")
+    if tmed is not None:
+        if valores.get("tmax") is None or valores.get("tmin") is None:
+            avisos.append(f"tmed ({tmed}) sem tmax/tmin completo -> null")
+            valores["tmed"] = None
+
+    # 4) ev_mm_dia depende de ev_mm
+    ev_dia = valores.get("ev_mm_dia")
+    if ev_dia is not None and valores.get("ev_mm") is None:
+        avisos.append(f"ev_mm_dia ({ev_dia}) sem ev_mm -> null")
+        valores["ev_mm_dia"] = None
+
+    # 5) SINALIZAÇÃO: tmax entre 26-27 (questionável, NÃO anula)
+    tmax = valores.get("tmax")
+    if tmax is not None and 26.0 <= tmax < 27.0:
+        avisos.append(f"tmax ({tmax}) entre 26-27 — questionável")
+
+    # 6) SINALIZAÇÃO: tmin entre 23-26 (atípico, NÃO anula)
+    tmin = valores.get("tmin")
+    if tmin is not None and 23.0 < tmin <= 26.0:
+        avisos.append(f"tmin ({tmin}) entre 23-26 — atípico")
 
     if avisos and data_iso:
         prefixo = f"{data_iso} {hora or ''}".strip()
@@ -256,13 +278,12 @@ def validar_registro(valores, data_iso=None, hora=None):
 def importar_arquivo(caminho: Path, relatorio_limpeza=False):
     ano = extrair_ano(caminho.name)
     if ano is None:
-        print(f"  [SKIP] {caminho.name}: nome não segue o padrão dados_YYYY.json")
+        print(f"  [SKIP] {caminho.name}: nome não segue o padrão")
         return 0
 
     with open(caminho, encoding="utf-8") as f:
         linhas = json.load(f)
 
-    # Corrige encoding das chaves (mojibake do Excel) ANTES de qualquer lookup
     linhas = [
         {corrigir_mojibake(k): v for k, v in linha.items()}
         for linha in linhas
@@ -275,17 +296,14 @@ def importar_arquivo(caminho: Path, relatorio_limpeza=False):
     cur.execute("SELECT id FROM estacoes WHERE codigo = ?", (CODIGO_ESTACAO,))
     row = cur.fetchone()
     if not row:
-        print(f"  [ERRO] Estação '{CODIGO_ESTACAO}' não existe no banco.")
-        print(f"         Rode scripts/criar_banco.py primeiro.")
+        print(f"  [ERRO] Estação '{CODIGO_ESTACAO}' não existe.")
         con.close()
         sys.exit(1)
     estacao_id = row[0]
 
     cur.execute(
-        """
-        INSERT INTO importacoes (arquivo, estacao_codigo, importado_em, total_registros, observacoes)
-        VALUES (?, ?, ?, ?, ?)
-        """,
+        """INSERT INTO importacoes (arquivo, estacao_codigo, importado_em, total_registros, observacoes)
+           VALUES (?, ?, ?, ?, ?)""",
         (caminho.name, CODIGO_ESTACAO,
          datetime.now().isoformat(timespec="seconds"),
          len(linhas), f"Importação de {caminho.name}"),
@@ -325,7 +343,6 @@ def importar_arquivo(caminho: Path, relatorio_limpeza=False):
             else:
                 valores[coluna_db] = para_float(raw)
 
-        # ===== VALIDAÇÃO =====
         valores, avisos = validar_registro(valores, data_iso, hora)
         if avisos:
             total_avisos += len(avisos)
@@ -355,11 +372,11 @@ def importar_arquivo(caminho: Path, relatorio_limpeza=False):
     print(f"  {caminho.name} (ano {ano}):")
     print(f"    Inseridos:  {inseridos}")
     if ignorados:
-        print(f"    Ignorados:  {ignorados} (sem data/hora válida)")
+        print(f"    Ignorados:  {ignorados}")
     if erros:
         print(f"    Erros:      {erros}")
     if total_avisos:
-        print(f"    Avisos:     {total_avisos} valores corrigidos/nulados")
+        print(f"    Avisos:     {total_avisos}")
 
     return inseridos
 
@@ -370,14 +387,11 @@ def importar_arquivo(caminho: Path, relatorio_limpeza=False):
 def main():
     if not CAMINHO_BANCO.exists():
         print(f"Banco não encontrado: {CAMINHO_BANCO}")
-        print("Rode 'python scripts/criar_banco.py' primeiro.")
         sys.exit(1)
 
-    parser = argparse.ArgumentParser(description="Importa JSONs para o banco ispaam.db.")
-    parser.add_argument("arquivo", nargs="?",
-                        help="Arquivo específico. Se omitido, importa todos os dados_*.json de dados_brutos/.")
-    parser.add_argument("--relatorio-limpeza", action="store_true",
-                        help="Imprime cada valor corrigido/nulado pela validação.")
+    parser = argparse.ArgumentParser(description="Importa JSONs para o banco.")
+    parser.add_argument("arquivo", nargs="?")
+    parser.add_argument("--relatorio-limpeza", action="store_true")
     args = parser.parse_args()
 
     if args.arquivo:
@@ -393,7 +407,7 @@ def main():
         )
 
     if not arquivos:
-        print(f"Nenhum arquivo dados_YYYY.json encontrado em {PASTA_BRUTOS}/")
+        print(f"Nenhum arquivo dados_YYYY.json encontrado.")
         sys.exit(1)
 
     print(f"Importando {len(arquivos)} arquivo(s)...\n")

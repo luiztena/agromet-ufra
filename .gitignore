@@ -7,14 +7,42 @@ dados_brutos/**/*.csv
 dados_brutos/**/*.json
 dados_brutos/**/*.bak
 dados_brutos/**/*.backup_*
+dados_brutos/backup_json_*/
 
 # ==========================================================
-# Relatorios gerados automaticamente (nao versionar)
+# Dados do INMET (baixados externamente)
+# ==========================================================
+dados_82191_*.csv
+dados_A201_*.csv
+
+# ==========================================================
+# Relatórios gerados automaticamente
 # ==========================================================
 relatorio_import.txt
 relatorio_suspeitos.txt
 relatorio_*.txt
 relatorio_*.csv
+
+# ==========================================================
+# Comparações e diagnósticos detalhados (regeneráveis)
+# ==========================================================
+comparacao_*.csv
+tmin_*.csv
+diagnostico_pipeline_detalhe.csv
+correcao_pipeline_log.csv
+figura_diagnostico_*.png
+
+# Exceção: manter os resumos pequenos de validação
+!diagnostico_pipeline_resumo.csv
+!validacao_tmax_resumo.csv
+!validacao_tmax_sazonalidade.csv
+!validacao_tmax_por_ano.csv
+
+# ==========================================================
+# Exportações de chat (não versionar)
+# ==========================================================
+deepseek_markdown_*.md
+Texto colado*.txt
 
 # ==========================================================
 # Ambientes virtuais
@@ -36,13 +64,14 @@ __pycache__/
 .ruff_cache/
 
 # ==========================================================
-# Banco de dados (binario, gerado por script)
+# Banco de dados (binário, gerado por script)
 # ==========================================================
 banco/*.db
 banco/*.db.bak
 banco/*.db-journal
 banco/*.sqlite
 banco/*.sqlite3
+banco/*.db.bak_*
 
 # ==========================================================
 # Backups (geral)
@@ -69,9 +98,9 @@ desktop.ini
 *~
 
 # ==========================================================
-# Logs e temporarios
+# Logs e temporários
 # ==========================================================
 *.log
 *.tmp
 *.temp
-*.cachescripts/_debug/ 
+*.cache

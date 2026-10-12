@@ -3,15 +3,6 @@ planilha_para_json.py
 ---------------------
 Converte uma aba específica de uma planilha .xlsx no JSON bruto do ISPAAM.
 
-- Lê a aba indicada por --aba (padrão: primeira aba).
-- Converte datetime -> 'dd/mm/aaaa'
-- Converte time    -> 'hh:mm'
-- Converte números -> string com vírgula decimal (padrão do pipeline)
-- Ignora linhas completamente vazias.
-- Normaliza cabeçalhos (espaços extras, aliases, ordem).
-- Trata a aba 2018 (layout diferente dos demais anos).
-- Valida coerência entre dia_semana e data (evita lixo).
-
 Uso:
     python scripts/planilha_para_json.py "dados_brutos/planilhas/Dados TAB.xlsx" --aba 2026 -o dados_brutos/dados_2026.json
 """
@@ -89,7 +80,6 @@ def _normalizar_dia_semana(s):
     if not s:
         return None
     s = s.lower().strip()
-    # Remove acentos
     s = (s.replace("á", "a").replace("ã", "a").replace("â", "a")
            .replace("é", "e").replace("ê", "e")
            .replace("í", "i")
@@ -105,7 +95,7 @@ def _dia_semana_confere(data_dd_mm, dia_semana_str, ano):
     Retorna True se OK, False se inconsistente, True se nao der pra validar.
     """
     if not data_dd_mm or not dia_semana_str or not ano:
-        return True  # sem dado suficiente, nao valida
+        return True
 
     partes = str(data_dd_mm).split("/")
     if len(partes) < 2:
@@ -115,14 +105,14 @@ def _dia_semana_confere(data_dd_mm, dia_semana_str, ano):
         dd = int(partes[0])
         mm = int(partes[1])
         data = datetime(ano, mm, dd)
-    except (ValueError, IndexError):
-        return True  # data invalida, deixa passar (sera tratada depois)
+    except (ValueError, IndexError, TypeError):
+        return True  # data invalida, deixa passar
 
     dia_real = _DIAS_SEMANA[data.weekday()]
     dia_planilha = _normalizar_dia_semana(dia_semana_str)
 
     if dia_planilha is None:
-        return True  # sem dia da semana na planilha, deixa passar
+        return True
 
     return dia_planilha == dia_real
 
@@ -145,12 +135,10 @@ def formatar_valor(valor):
     if isinstance(valor, time):
         return f"{valor.hour:02d}:{valor.minute:02d}"
 
-    # string: limpa
     if isinstance(valor, str):
         s = valor.strip()
         return s if s else None
 
-    # números -> string com vírgula decimal (compatível com JSONs antigos)
     if isinstance(valor, (int, float)):
         if isinstance(valor, float) and valor.is_integer():
             return str(int(valor))
@@ -158,6 +146,87 @@ def formatar_valor(valor):
 
     return str(valor)
 
+
+# ---------------------------------------------------------------------------
+# Saneamento pós-conversão
+# ---------------------------------------------------------------------------
+
+def _para_float_local(v):
+    """Converte string com vírgula ou ponto para float. None se não numérico."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip()
+    if not s or s.lower() == "null" or s in ("-", "--"):
+        return None
+    try:
+        return float(s.replace(",", "."))
+    except ValueError:
+        return None
+
+
+def _formatar_decimal(v):
+    """Float -> string com vírgula decimal (padrão dos JSONs)."""
+    if v is None:
+        return None
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(round(v, 2)).replace(".", ",")
+
+
+def sanear_registro(obj):
+    """
+    Recalcula Tméd e anula valores implausíveis.
+    Corrige o bug do Excel: (vazio + número) / 2 gera valores absurdos (16-18 °C).
+
+    Regras:
+      - Tméd só é calculada se Tmin e Tmáx existem (prioridade Real).
+      - Tmin fora de [15, 27] °C vira None.
+      - Tmáx fora de [25, 40] °C vira None.
+      - Tméd fora de [18, 40] °C vira None (redundância de segurança).
+    """
+    # Tmin e Tmáx com prioridade para os "Real"
+    tmin = _para_float_local(obj.get("Tmin Real (ºC)"))
+    if tmin is None:
+        tmin = _para_float_local(obj.get("Tmin (°C)"))
+
+    tmax = _para_float_local(obj.get("Tmáx Real (ºC)"))
+    if tmax is None:
+        tmax = _para_float_local(obj.get("Tmáx (°C)"))
+
+    # Faixas plausíveis para Belém
+    if tmin is not None and not (15.0 <= tmin <= 27.0):
+        tmin = None
+    if tmax is not None and not (25.0 <= tmax <= 40.0):
+        tmax = None
+
+    # Recalcula Tméd
+    if tmin is not None and tmax is not None:
+        tmed = (tmin + tmax) / 2
+        if not (18.0 <= tmed <= 40.0):
+            tmed = None
+    else:
+        tmed = None
+
+    # Aplica ao objeto
+    if "Tmin Real (ºC)" in obj:
+        obj["Tmin Real (ºC)"] = _formatar_decimal(tmin)
+    if "Tmin (°C)" in obj:
+        obj["Tmin (°C)"] = _formatar_decimal(tmin)
+    if "Tmáx Real (ºC)" in obj:
+        obj["Tmáx Real (ºC)"] = _formatar_decimal(tmax)
+    if "Tmáx (°C)" in obj:
+        obj["Tmáx (°C)"] = _formatar_decimal(tmax)
+    if "Tméd (ºC)" in obj:
+        obj["Tméd (ºC)"] = _formatar_decimal(tmed)
+
+    return obj
+
+
+# ---------------------------------------------------------------------------
+# Cabeçalho
+# ---------------------------------------------------------------------------
 
 def normalizar_cabecalho(nome, idx):
     if nome is None:
@@ -255,13 +324,16 @@ def converter(caminho_entrada: Path, caminho_saida: Path, aba: str = None):
             ignorados += 1
             continue
 
-        # ===== VALIDAÇÃO: dia da semana bate com a data? =====
+        # Validação: dia da semana bate com a data?
         data_str = obj.get(coluna_data)
         dia_semana_str = obj.get("Dia da semana")
         if not _dia_semana_confere(data_str, dia_semana_str, ano_aba):
             print(f"  [SKIP] {data_str} ({dia_semana_str}) — dia da semana inconsistente")
             rejeitados_dia_semana += 1
             continue
+
+        # Saneamento
+        obj = sanear_registro(obj)
 
         registros.append(obj)
 

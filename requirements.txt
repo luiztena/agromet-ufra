@@ -1,12 +1,64 @@
-# Framework web
-Flask>=3.0
-flask-cors>=4.0
+DEUSES ANTIGOS
+NHADERUVUÇU DEUS ANCESTRAL PRIMORDIAL POSSUI DUAS FACES
+PRIMEIRA FACE DE NHADERUVUÇU TUPÃ representa os trovões tempestade e a bondade
+SECUNDA FACE DE NHADERUVUÇU JURUPARI representa o silencio as sombras a escuridão e a maldade também chamado de Deus da Morte
+GUARACI FILHO DE TUPÃ DEUS DO SOL LIGAÇÃO COM A PROTAGONISTA aliado
+CURUPIRA DEUS DA FLORESTA 
+JACI FILHA DE JURUPARI DEUSA DA LUA LIGAÇÃO COM A ANTAGONISTA aliado chamada de Deusa da lua
+RUDA DEUSA DO AMOR E FERTILIDADE, não se sabe ao certo se ele foi criado por NHADERUVUÇU como presente para seus filhos, ou foi fruto dO amor entre o sol
+e a Lua 
+ANHANGA, como forma de equilibrar o universo JURUPARI (segunda face de NHADERUVUÇU) criou ANHANGA o DEUS que é o contrario do amor
+ele destrói e causa guerras, não por ser mal por natureza, mas para manter o equilíbrio chamado também de destruidor dos homens
+CURUPIRA DO AMOR ENTRE RUDÁ e ANHANGÁ Surgiu dois euses, o deus da natureza e o deus do medo e da fome que iria retornar ao mundo para tomar o lugar do antigo deus da morte
+Mãe do ouro filha de Guaraci vaga próximo aos rios atrás das filhos e filhas de Jaci para seduzi-los seu nome mão de ouro se deve ao fato de conseguir transformar pedras normais em pedras brilhantes mas que depois que ele se afasta apagam também é conhecido como a deusa dos rios e da beleza
 
-# Requisições HTTP (scraper, ECMWF)
-requests>=2.31
+ASCENDIDOS E NOVOS DEUSES 
 
-# Parse HTML (scraper)
-beautifulsoup4>=4.12
+CAIRE E CATITI foram os primeiros seres a ascender trabalhando diretamente para Rudá, alguns contos consideram elas como semideusas derivadas do amor entre um homem e a deusa da Lua 
+CAAPORÃ, CAIPORA E SACI seres que foram ASCENDIDOS responsáveis pelo papel de proteger os animais que estão amamentando e arvores novas não se sabe ao certo porque eles foram escolhidos 
+Iara era a sacerdotisa mais fiel de Jaci um dia foi atacada por seus irmãos e teve que mata-los não aguentando o peso se matou em noite de lua cheia sub a luz do luar em um rio a lua ficou vermelha no reflexo da agua e nesse momento ascendeu
+Vitória-régia Ela se apaixonou pela imagem do reflexo de Jaci na agua e por conta disso se afogou Jaci vendo sua paixão ficou comovida e a ascendidos 
+Ticê foi uma das feiticeiras mais poderosas de sua tribo também conhecida como a ceifadora outros dizem que ela se tornou a própria Deusas da morte, existem lendas de que quando ela morreu Anhanga veio pessoalmente oferecer uma ascensão do seu espirito e ela passou a trabalhas na parte burocrática de guiar as almas e se torna a escriba de anhangá 
+JARÁ DEUSA DAS AGUAS PROFUNDAS E OCEANOS Era uma das 3 ascendidas de Jaci mas se corrompeu na sua busca de poder sendo amaldiçoada a viver no fundo de oceanos e profundezas do mar é responsável pelos espíritos dos mares e todo desconhecido dos oceanos. 
 
-# Leitura de planilhas Excel
-openpyxl>=3.1
+BOITATA BOSS
+Ipupiara boss
+Mula sem cabeça (incerto)
+Brandador inimigo
+Matinta refetencia conexão com dinair
+Cabra cabriola inimigo
+Maraganca  inimigo
+mão de cabelo inimigo
+chimbamba inimigo
+Alma de gato - referencia citado
+Boto - referenciado
+Mapinguari boss
+Capelobo  inimigo
+Pé de garrafa inimigo
+Quibungo inimigo
+Papa-figo inimigo
+alamoa - referencia
+ANGOERA  figurante
+ANTA ESFOLADA inimigo
+cabeça de cuia inimigo
+A CACHORRA DA PALMEIRA figurante TIRADO
+CANHAMBORA inimigo
+O CARBÚNCULO inimigo reptiliano
+A COBRA NORATO personagem figurante
+Cobra Cainana figurante
+CORPO-SECO inimigo 
+Curaganga personagem figurante
+Bicho raposa inimigo
+Guara - espirito controlado por Yamara mas não o protagonista nunca o enfrenta
+Macacos demonio - inimigo
+JOÃO GALAFUZ CHEFE DOS TRITÕES BOSS ou inimigo
+Mão pelada inimigo
+NEGRINHO DO PASTOREIO figurante
+ONÇA-BOI inimigo
+ONÇA-MANETA figurante
+pisadeira - inimigo se o jogador dormir no lugar errado é hit kill
+VAQUEIRO MISTERIOSO a representação da morte figurante
+Mulher sangue-suga boss
+homem rato boss
+Vira porco modificado subboss
+Nihil boss que vira aliado
