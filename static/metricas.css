@@ -1,0 +1,255 @@
+/* ==========================================================
+   Seção "Métricas estatísticas"
+   Estilo acadêmico formal — sem cores, sem bordas, sem ícones
+   ========================================================== */
+
+.comp-metricas {
+    margin-top: 40px;
+    padding-top: 30px;
+    border-top: 1px solid #ccc;
+    max-width: 200ch;
+}
+
+/* Títulos em negrito e caixa alta */
+.comp-metricas-titulo {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #000;
+    margin: 0 0 20px 0;
+}
+
+.comp-metricas-subtitulo {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #000;
+    margin: 32px 0 16px 0;
+}
+
+/* Parágrafo introdutório */
+.comp-metricas-intro {
+    font-size: 20px;
+    line-height: 1.5;
+    text-align: justify;
+    hyphens: auto;
+    margin: 0 0 24px 0;
+    color: #000;
+}
+
+/* Navegação por âncoras — sem pílula, só texto sublinhado */
+.comp-metricas-nav {
+    margin: 0 0 24px 0;
+    font-size: 13px;
+    line-height: 1.8;
+}
+
+.comp-metricas-nav a {
+    color: #000;
+    text-decoration: underline;
+    margin-right: 16px;
+}
+
+.comp-metricas-nav a:hover {
+    text-decoration: none;
+}
+
+/* Notação introdutória */
+.comp-metrica-notacao {
+    font-size: 13px;
+    line-height: 1.5;
+    text-align: justify;
+    hyphens: auto;
+    margin: 0 0 24px 0;
+    color: #000;
+}
+
+/* Cada métrica — parágrafo corrido, sem caixa */
+.comp-metrica {
+    margin: 0 0 28px 0;
+}
+
+.comp-metrica h4 {
+    font-size: 22px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #000;
+    margin: 24px 0 12px 0;
+}
+
+.comp-metrica h4 .comp-metrica-num {
+    display: inline;
+    font-weight: 700;
+    margin-right: 4px;
+}
+
+.comp-metrica p {
+    font-size: 16px;
+    line-height: 2.5 !important;
+    text-indent: 6em;
+    text-align: justify;
+    hyphens: auto;
+    color: #000;
+    margin: 0 0 12px 0;
+}
+
+.comp-metrica p:last-child {
+    margin-bottom: 0;
+}
+
+/* Fórmulas — só um recuo, sem fundo */
+.comp-metrica-formula {
+    margin: 16px 0 16px 40px;
+    text-align: left;
+}
+
+/* Tabelas — centralizadas, com margem, sem cor */
+.comp-tabela-scroll {
+    margin: 24px auto;
+    padding: 0;
+    overflow-x: auto;
+    max-width: 100%;
+    display: flex;
+    justify-content: center;
+}
+
+.comp-metrica-tabela {
+    margin: 0 auto;
+    border-collapse: collapse;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.comp-metrica-tabela th {
+    padding: 8px 20px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #000;
+    border-top: 2px solid #000;
+    border-bottom: 1px solid #000;
+    white-space: nowrap;
+}
+
+.comp-metrica-tabela td {
+    padding: 8px 20px;
+    border-bottom: 1px solid #ddd;
+    vertical-align: top;
+    color: #000;
+}
+
+.comp-metrica-tabela tbody tr:last-child td {
+    border-bottom: 2px solid #000;
+}
+
+.comp-metrica-tabela-leitura {
+    font-size: 12.5px;
+    line-height: 1.5;
+    text-align: justify;
+    hyphens: auto;
+    margin: 12px 0 0 0;
+    color: #000;
+}
+
+/* Bloco de comparação dentro da métrica */
+.comp-metrica-comparacao {
+    margin: 16px 0;
+}
+
+.comp-metrica-comparacao p {
+    margin-bottom: 12px;
+    font-size: 13.5px;
+}
+
+/* Selos e réguas — desaparecem (só o texto fica) */
+.comp-selo {
+    display: inline;
+    padding: 0;
+    border-radius: 0;
+    font-size: inherit;
+    font-weight: 400;
+    color: inherit;
+    background: none;
+}
+
+.comp-escala {
+    display: none;
+}
+
+/* Listas */
+.comp-passos,
+.comp-armadilhas {
+    font-size: 14px;
+    line-height: 1.5;
+    text-align: justify;
+    hyphens: auto;
+    margin: 12px 0;
+    padding-left: 26px;
+}
+
+.comp-passos li,
+.comp-armadilhas li {
+    margin-bottom: 8px;
+}
+
+/* Bloco de critérios — sem fundo verde */
+.comp-metrica-criterios {
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid #ccc;
+}
+
+.comp-metrica-criterios h4 {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #000;
+    margin: 0 0 12px 0;
+}
+
+.comp-metrica-referencia {
+    font-size: 12px;
+    line-height: 1.5;
+    text-align: justify;
+    hyphens: auto;
+    color: #000;
+    margin: 16px 0 0 0;
+}
+
+/* KaTeX */
+.katex-display {
+    margin: 0 !important;
+}
+/* ==========================================================
+   Fórmulas maiores
+   ========================================================== */
+.comp-metrica-formula {
+    font-size: 1.25em;
+}
+
+/* Se o KaTeX estiver dentro do bloco, ajustar também */
+.comp-metrica-formula .katex,
+.comp-metrica-formula .katex-display {
+    font-size: 1.25em;
+    margin: 50px;
+}
+/* Responsivo */
+@media (max-width: 768px) {
+    .comp-metricas {
+        max-width: 100%;
+    }
+    .comp-metrica-formula {
+        margin-left: 0;
+    }
+
+    .comp-metricas {
+    max-width: 80ch;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+}

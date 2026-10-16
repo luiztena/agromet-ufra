@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 Comparação Tripla — UFRA × INMET</title>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+    <!-- Favicon (evita o 404) -->
+    <link rel="icon" href="data:,">
+
+    <!-- KaTeX — renderização de fórmulas matemáticas -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+            onload="renderMathInElement(document.body, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false}
+                ],
+                throwOnError: false
+            });"></script>
+
+    <!-- CSS do projeto -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <!-- CSS específico do dashboard -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='grafico.css') }}">
+
+    <!-- CSS específico das métricas estatísticas -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='metricas.css') }}">
+</head>
+<body>
+
+    <!-- CABEÇALHO -->
+    <div id="header">
+        <div style="display: flex; flex-direction: column; gap: 5px;">
+            <h1><i class="fas fa-chart-line"></i> Comparação de Estações</h1>
+            <span style="font-size: 12px; opacity: 0.9; margin-left: 32px;">
+                UFRA × INMET 82191 × INMET A201
+            </span>
+        </div>
+
+        <div class="status">
+            <a href="/" style="color: white; text-decoration: none; display: flex; align-items: center; gap: 6px;">
+                <i class="fas fa-arrow-left"></i> Voltar ao mapa
+            </a>
+        </div>
+    </div>
+
+    <!-- CONTEÚDO -->
+    <div class="comp-main">
+
+        <!-- CONTROLES -->
+        <div class="comp-controles">
+            <div class="comp-controle-grupo">
+                <label>Variável:</label>
+                <select id="select-variavel">
+                    <option value="tmax">Temperatura Máxima</option>
+                    <option value="tmin">Temperatura Mínima</option>
+                </select>
+            </div>
+
+            <div class="comp-controle-grupo">
+                <label>Ano:</label>
+                <select id="select-ano">
+                    <option value="">Carregando...</option>
+                </select>
+            </div>
+
+            <div class="comp-controle-grupo comp-estacoes">
+                <label>Estações:</label>
+                <label class="comp-checkbox">
+                    <input type="checkbox" id="check-ufra" checked>
+                    <span>UFRA</span>
+                </label>
+                <label class="comp-checkbox">
+                    <input type="checkbox" id="check-82191" checked>
+                    <span>82191</span>
+                </label>
+                <label class="comp-checkbox">
+                    <input type="checkbox" id="check-a201" checked>
+                    <span>A201</span>
+                </label>
+            </div>
+
+            <div class="comp-controle-grupo">
+                <button onclick="exportarPDF()" class="comp-btn-pdf">
+                    <i class="fas fa-file-pdf"></i> Exportar PDF
+                </button>
+            </div>
+        </div>
+
+        <!-- AVISOS -->
+        <div id="comp-avisos" class="comp-avisos" style="display: none;"></div>
+
+        <!-- TABS -->
+        <div class="comp-tabs">
+            <button class="comp-tab active" data-tab="grafico">
+                <i class="fas fa-chart-line"></i> Gráfico
+            </button>
+            <button class="comp-tab" data-tab="diaria">
+                <i class="fas fa-table"></i> Tabela Diária
+            </button>
+            <button class="comp-tab" data-tab="mensal">
+                <i class="fas fa-calendar-alt"></i> Tabela Mensal
+            </button>
+        </div>
+
+        <!-- CONTEÚDO DAS ABAS -->
+        <div class="comp-conteudo">
+
+            <!-- ABA GRÁFICO -->
+            <div class="comp-painel active" id="painel-grafico">
+                <div class="comp-grafico-wrapper">
+                    <canvas id="grafico-comparacao"></canvas>
+                </div>
+
+                <div id="comp-resumo-cards" class="comp-resumo-cards"></div>
+
+                <!-- ============================================== -->
+                <!-- SEÇÃO: MÉTRICAS ESTATÍSTICAS                   -->
+                <!-- ============================================== -->
+                <div class="comp-metricas">
+
+<br>                    <h3 style="font-size: 25pt;" class="comp-metricas-titulo">MÉTRICAS ESTATÍSTICAS</h3><br>
+
+
+
+                    <p class="comp-metrica-notacao">
+                        <strong>NOTAÇÃO:</strong>
+                        $x_i$ e $y_i$ são os valores do dia $i$ nas estações A e B;
+                        $N$ é o número de dias pareados;
+                        $d_i = x_i - y_i$ é a diferença do dia;
+                        $\overline{x}$, $\overline{y}$ e $\overline{d}$ são as médias.
+                        Nas tabelas de diferenças do dashboard, o sinal segue a ordem da coluna
+                        (UFRA − 82191 = UFRA menos 82191).
+                    </p><br>
+
+                    <!-- ---------- GUIA RÁPIDO ---------- -->
+                    <div class="comp-tabela-scroll">
+                        <table class="comp-metrica-tabela" style="margin-left: auto; margin-right: auto;">
+                            <thead>
+                                <tr><th>Métrica</th><th>Pergunta que responde</th><th>Unidade</th><th>Resultado desejável</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>N pareado</td><td>Há dados suficientes para confiar?</td><td>dias</td><td>&gt; 300</td></tr>
+                                <tr><td>Viés médio</td><td>Uma estação mede mais que a outra?</td><td>°C</td><td>|viés| &lt; 0,3</td></tr>
+                                <tr><td>Desvio padrão das diferenças</td><td>O viés é estável de um dia para o outro?</td><td>°C</td><td>menor é melhor</td></tr>
+                                <tr><td>RMSE</td><td>Qual é o erro típico por dia?</td><td>°C</td><td>&lt; 1,0</td></tr>
+                                <tr><td>Correlação r</td><td>As séries sobem e descem juntas?</td><td>−1 a +1</td><td>&gt; 0,8</td></tr>
+                                <tr><td>Willmott d</td><td>Concordam também no valor absoluto?</td><td>0 a 1</td><td>&gt; 0,8</td></tr>
+                                <tr><td>IC 95%</td><td>Quão incerto é o viés estimado?</td><td>°C</td><td>inclui zero → sem viés detectável</td></tr>
+                                <tr><td>Cobertura</td><td>Que fração do período foi comparada?</td><td>%</td><td>&gt; 90%</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+<br>
+                    <!-- ---------- 1. N PAREADO ---------- -->
+                    <div class="comp-metrica" id="metrica-n">
+                        <h4> N PAREADO</h4>
+
+                        <p>
+                            O N pareado é o número de observações em que ambas as estações comparadas
+                            apresentam valor válido para a mesma variável no mesmo dia. Ele constitui a
+                            base sobre a qual todas as demais métricas desta seção são calculadas: se
+                            um dia tem dado apenas em uma das estações, esse dia é descartado da
+                            comparação, pois não há como confrontar duas medições quando apenas uma
+                            existe.
+                        </p>
+
+                        <p>
+                            Formalmente, o N pareado corresponde à cardinalidade do conjunto de dias
+                            em que as duas séries estão simultaneamente preenchidas:
+                        </p><br>
+
+                        <div class="comp-metrica-formula">
+                            $$N_{\text{pareado}} = \left| \{\, d \in \text{Dias} \;:\; x_d \neq \varnothing \;\wedge\; y_d \neq \varnothing \,\} \right|$$
+                        </div><br>
+
+                        <p>
+                            O valor de N determina diretamente a precisão das métricas subsequentes.
+                            Amostras com N acima de 300 produzem estimativas consideradas robustas, com
+                            intervalos de confiança suficientemente estreitos para sustentar conclusões
+                            sobre a concordância entre as estações. Valores entre 100 e 300 ainda são
+                            utilizáveis, mas exigem cautela na interpretação. Amostras com N inferior
+                            a 100 produzem estimativas instáveis, nas quais pequenas variações diárias
+                            podem alterar significativamente o resultado final. É importante lembrar
+                            que o N pareado é sempre menor ou igual ao número total de dias do período:
+                            se o período tem 365 dias e ambas as estações têm dado em todos eles, o N
+                            pareado será 365; se uma das estações falha em 100 dias, o N pareado cai
+                            para 265, mesmo que a outra estação tenha dado completo.
+                        </p>
+
+                        <p>
+                            No contexto deste projeto, o N pareado varia consideravelmente entre os
+                            anos e entre as variáveis analisadas. Em 2024, por exemplo, o par UFRA ×
+                            82191 para temperatura máxima apresenta N = 252, pois a estação 82191
+                            registrou apenas 252 dias com dado válido ao longo do ano. Esse número
+                            reflete tanto a ausência de observador em alguns períodos quanto a própria
+                            natureza da estação convencional, que depende de leitura manual. Para a
+                            temperatura mínima, o N pareado em 2024 é ainda menor, em função da falha
+                            instrumental do sensor de mínima da UFRA, que permaneceu inativo durante
+                            a maior parte do ano. Esses valores de N devem sempre ser considerados
+                            antes de interpretar as métricas seguintes, pois um N baixo enfraquece a
+                            confiabilidade de qualquer conclusão derivada.
+                        </p>
+                    </div>
+
+                    <!-- ---------- 2. VIÉS MÉDIO ---------- -->
+                    <div class="comp-metrica" id="metrica-vies">
+                        <h4> VIÉS MÉDIO</h4>
+
+                        <p>
+                            O viés médio é a diferença média entre os valores de duas estações ao
+                            longo do tempo. Ele indica se uma das estações mede sistematicamente
+                            valores maiores ou menores que a outra, ou seja, se existe um deslocamento
+                            constante entre as duas séries. É o primeiro indicador a ser examinado
+                            quando se quer saber se duas estações produzem medições equivalentes em
+                            termos de valor central.
+                        </p>
+
+                        <p>
+                            Formalmente, o viés é calculado como a média aritmética das diferenças
+                            diárias entre as duas séries:
+                        </p>
+
+                        <div class="comp-metrica-formula">
+                            $$\text{Viés} = \frac{1}{N} \sum_{i=1}^{N} \left( x_i - y_i \right)$$
+                        </div>
+
+                        <p>
+                            O sinal do viés indica a direção do deslocamento. Se o viés é positivo,
+                            a estação A mede, em média, valores maiores que a estação B. Se é negativo,
+                            a estação A mede valores menores. Se é próximo de zero, as duas estações
+                            concordam em média. A magnitude do viés, por sua vez, indica a intensidade
+                            desse deslocamento: valores próximos de zero (menos de 0,3 °C) indicam
+                            concordância excelente; valores entre 0,3 e 1,0 °C indicam uma diferença
+                            aceitável; e valores acima de 1,0 °C em módulo indicam divergência
+                            significativa entre as estações.
+                        </p>
+
+                        <div class="comp-escala" role="img" aria-label="Régua do viés em valor absoluto: 0,009 °C está na faixa excelente (abaixo de 0,3 °C)">
+                            <div class="comp-escala-trilho">
+                                <span class="z-bom" style="flex:15"></span>
+                                <span class="z-med" style="flex:35"></span>
+                                <span class="z-ruim" style="flex:50"></span>
+                                <b class="comp-escala-marca" style="left:0.45%"><em>0,009</em></b>
+                            </div>
+                            <div class="comp-escala-ticks">
+                                <span style="left:0%">0</span><span style="left:15%">0,3</span>
+                                <span style="left:50%">1,0</span><span style="left:100%">2,0 °C</span>
+                            </div>
+                            <p class="comp-escala-legenda">Régua de |viés|. Neste exemplo: <span class="comp-selo bom">excelente</span></p>
+                        </div>
+
+                        <p>
+                            Um aspecto importante a considerar é que o viés próximo de zero não
+                            garante, por si só, que as estações concordem. Se uma estação mede 2 °C
+                            a mais em metade dos dias e 2 °C a menos na outra metade, o viés médio
+                            será zero, mas as estações discordam substancialmente. Por esse motivo,
+                            o viés deve sempre ser lido em conjunto com o RMSE e a correlação, que
+                            capturam aspectos diferentes da relação entre as séries.
+                        </p>
+
+                        <p>
+                            No contexto deste projeto, o viés entre UFRA e INMET 82191 para
+                            temperatura máxima é de +0,009 °C. Esse valor é praticamente nulo: a
+                            UFRA mede, em média, 0,009 °C a mais que a 82191, o que está muito
+                            abaixo do limiar de 0,3 °C que caracteriza excelente concordância. Isso
+                            indica que, em termos de valor médio, as duas estações produzem medições
+                            equivalentes para essa variável.
+                        </p>
+                    </div>
+
+                    <!-- ---------- 3. DESVIO PADRÃO ---------- -->
+                    <div class="comp-metrica" id="metrica-desvio">
+                        <h4>DESVIO PADRÃO DAS DIFERENÇAS</h4>
+
+                        <p>
+                            O desvio padrão das diferenças mede a dispersão das diferenças diárias
+                            em torno do viés médio. Enquanto o viés indica a parte sistemática do
+                            erro entre as estações (o deslocamento constante), o desvio padrão
+                            quantifica a parte aleatória, ou seja, o quanto essa diferença varia
+                            de um dia para o outro. É uma métrica complementar ao viés: juntos,
+                            eles caracterizam completamente o comportamento do erro.
+                        </p>
+
+                        <p>
+                            Formalmente, o desvio padrão das diferenças é calculado como a raiz
+                            da média dos quadrados dos desvios de cada diferença em relação ao
+                            viés médio:
+                        </p>
+
+                        <div class="comp-metrica-formula">
+                            $$\sigma_{\text{dif}} = \sqrt{\frac{1}{N} \sum_{i=1}^{N} \left( d_i - \overline{d} \right)^2} \quad \text{onde} \quad d_i = x_i - y_i$$
+                        </div>
+
+                        <p>
+                            Um desvio padrão pequeno indica que o viés é estável dia após dia: as
+                            duas estações mantêm uma diferença consistente em todos os dias da
+                            série. Um desvio padrão grande indica que o viés varia muito entre os
+                            dias: em alguns momentos a estação A mede bem mais que a B, em outros
+                            mede menos, e essa variação é alta. Do ponto de vista prático, o desvio
+                            padrão é a principal fonte de incerteza nas métricas de concordância.
+                        </p>
+
+                        <p>
+                            O desvio padrão das diferenças está diretamente relacionado ao RMSE,
+                            que será apresentado na métrica seguinte. Em termos matemáticos, o
+                            RMSE ao quadrado é igual à soma do viés ao quadrado com o desvio padrão
+                            das diferenças ao quadrado. Essa relação permite decompor o erro total
+                            entre as duas estações em duas partes: uma sistemática (viés) e uma
+                            aleatória (desvio padrão). Quando o viés é pequeno mas o RMSE é grande,
+                            isso significa que quase todo o erro vem da variabilidade diária, e
+                            não de um deslocamento fixo entre as estações.
+                        </p>
+                    </div>
+
+                    <!-- ---------- 4. RMSE ---------- -->
+                    <div class="comp-metrica" id="metrica-rmse">
+                        <h4> RMSE — RAIZ DO ERRO QUADRÁTICO MÉDIO</h4>
+
+                        <p>
+                            O RMSE (Root Mean Square Error, ou raiz do erro quadrático médio) mede
+                            a magnitude típica das diferenças entre duas séries, penalizando mais
+                            fortemente os erros grandes. Diferente do viés médio, que pode cancelar
+                            erros positivos e negativos, o RMSE sempre resulta em um valor positivo
+                            e representa o tamanho médio do erro, independente da direção.
+                        </p>
+
+                        <p>
+                            Formalmente, o RMSE é calculado como a raiz quadrada da média dos
+                            quadrados das diferenças diárias entre as duas estações:
+                        </p>
+
+                        <div class="comp-metrica-formula">
+                            $$\text{RMSE} = \sqrt{\frac{1}{N} \sum_{i=1}^{N} \left( x_i - y_i \right)^2}$$
+                        </div>
+
+                        <p>
+                            A diferença fundamental entre o viés e o RMSE está no fato de que o
+                            RMSE não permite o cancelamento de erros opostos. Considere duas séries
+                            fictícias. No primeiro caso, a estação A é consistentemente 1 °C mais
+                            fria que a B em todos os dias: o viés é −1 °C e o RMSE é 1 °C. No
+                            segundo caso, as diferenças alternam entre −3 e +3 °C: o viés médio
+                            continua sendo zero, mas o RMSE é 3 °C. O segundo caso demonstra
+                            claramente que as estações discordam muito, mesmo que o viés médio
+                            seja nulo.
+                        </p>
+
+                        <div class="comp-tabela-scroll">
+                            <table class="comp-metrica-tabela">
+                                <thead>
+                                    <tr><th>Caso</th><th>Diferenças diárias</th><th>Viés</th><th>RMSE</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>A</td><td>−1, −1, −1, −1, −1</td><td>−1 °C</td><td>1 °C</td></tr>
+                                    <tr><td>B</td><td>−3, +3, −3, +3, −3</td><td>0 °C</td><td>3 °C</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <p>
+                            O RMSE pode ser decomposto em duas parcelas, uma sistemática e outra
+                            aleatória, conforme a relação abaixo. Essa decomposição é útil para
+                            diagnosticar a origem do erro entre as estações:
+                        </p>
+
+                        <div class="comp-metrica-formula">
+                            $$\text{RMSE}^2 = \text{Viés}^2 + \sigma_{\text{dif}}^2$$
+                        </div>
+
+                        <p>
+                            Se a parte sistemática (viés ao quadrado) for pequena em relação ao
+                            RMSE ao quadrado, o erro é predominantemente ruído aleatório. Se for
+                            grande, o erro é principalmente um deslocamento fixo, o que significa
+                            que pode ser corrigido por uma calibração. Essa distinção é importante
+                            do ponto de vista operacional: erros sistemáticos podem ser compensados,
+                            enquanto erros aleatórios exigem melhoria do sensor ou do abrigo.
+                        </p>
+
+                        <p>
+                            No contexto deste projeto, o RMSE entre UFRA e INMET 82191 para
+                            temperatura máxima é de 1,26 °C. Esse valor é classificado como
+                            aceitável (entre 1,0 e 2,0 °C), mas não chega ao patamar de excelência
+                            (< 1,0 °C). Considerando que o viés é praticamente nulo (+0,009 °C),
+                            quase todo esse erro é atribuível à dispersão diária entre as duas
+                            estações, e não a um deslocamento fixo. Em outras palavras, não há
+                            erro sistemático corrigível, mas sim uma variabilidade residual que
+                            reflete diferenças de sítio, exposição ou timing das medições.
+                        </p>
+
+                        <div class="comp-escala" role="img" aria-label="Régua do RMSE: 1,26 °C está na faixa aceitável (entre 1,0 e 2,0 °C)">
+                            <div class="comp-escala-trilho">
+                                <span class="z-bom" style="flex:1"></span>
+                                <span class="z-med" style="flex:1"></span>
+                                <span class="z-ruim" style="flex:1"></span>
+                                <b class="comp-escala-marca" style="left:42%"><em>1,26</em></b>
+                            </div>
+                            <div class="comp-escala-ticks">
+                                <span style="left:0%">0</span><span style="left:33.3%">1,0</span>
+                                <span style="left:66.7%">2,0</span><span style="left:100%">3,0 °C</span>
+                            </div>
+                            <p class="comp-escala-legenda">Régua de RMSE. Neste exemplo: <span class="comp-selo med">aceitável</span></p>
+                        </div>
+                    </div>
+
+                    <!-- ---------- 5. CORRELAÇÃO r ---------- -->
+                    <div class="comp-metrica" id="metrica-r">
+                        <h4>CORRELAÇÃO DE PEARSON (r)</h4>
+
+                        <p>
+                            A correlação de Pearson, denotada por r, mede a associação linear entre
+                            duas séries temporais. Ela responde a uma pergunta distinta daquelas
+                            feitas pelo viés e pelo RMSE: não se trata de saber se as estações
+                            concordam em valor absoluto, mas sim se elas se movimentam juntas. Duas
+                            estações podem ter um viés grande entre si e, ainda assim, apresentarem
+                            correlação alta, se ambas sobem e descem nos mesmos dias.
+                        </p>
+
+                        <p>
+                            Formalmente, a correlação de Pearson é definida como a razão entre a
+                            covariância das duas séries e o produto dos seus desvios padrão:
+                        </p>
+
+                        <div class="comp-metrica-formula">
+                            $$r = \frac{\text{cov}(X, Y)}{\sigma_X \cdot \sigma_Y} \quad \in \; [-1,\, +1]$$
+                        </div>
+
+                        <p>
+                            O coeficiente r varia de −1 a +1. Um valor de +1 indica correlação
+                            positiva perfeita: quando a estação A sobe, a estação B sobe na mesma
+                            proporção. Um valor de −1 indica correlação negativa perfeita: quando
+                            A sobe, B desce. Um valor próximo de zero indica ausência de relação
+                            linear. Do ponto de vista prático, correlações acima de 0,8 são
+                            consideradas excelentes; valores entre 0,6 e 0,8 são aceitáveis; e
+                            valores abaixo de 0,6 indicam que as séries não se movimentam de forma
+                            coordenada.
+                        </p>
+
+                        <p>
+                            Uma medida complementar útil é o coeficiente de determinação, denotado
+                            por r², que representa a fração da variância de uma estação explicada
+                            linearmente pela outra. Um r de 0,8, por exemplo, corresponde a um r²
+                            de 0,64, o que significa que 64% da variação de uma estação é explicada
+                            pela outra; os 36% restantes ficam por conta de fatores não lineares,
+                            ruído ou variáveis externas.
+                        </p>
+
+                        <p>
+                            É fundamental não confundir correlação com concordância. Duas estações
+                            podem ter uma correlação de 0,95 e, ainda assim, apresentarem um viés
+                            de 5 °C entre si: elas sobem e descem juntas, mas sempre deslocadas.
+                            Nesse caso, a correlação alta é real, mas a concordância em valor
+                            absoluto é ruim. Por isso, r deve ser interpretado sempre em conjunto
+                            com o viés e com o índice d de Willmott.
+                        </p>
+
+                        <p>
+                            No contexto deste projeto, a correlação entre UFRA e 82191 para
+                            temperatura máxima é de 0,725, o que corresponde a um r² de
+                            aproximadamente 0,53. Isso significa que pouco mais da metade da
+                            variação diária de uma estação é explicada pela outra, e o restante
+                            vem de diferenças no comportamento das duas séries.
+                        </p>
+
+                        <div class="comp-escala" role="img" aria-label="Régua da correlação: 0,725 está na faixa aceitável (entre 0,6 e 0,8)">
+                            <div class="comp-escala-trilho">
+                                <span class="z-ruim" style="flex:60"></span>
+                                <span class="z-med" style="flex:20"></span>
+                                <span class="z-bom" style="flex:20"></span>
+                                <b class="comp-escala-marca" style="left:72.5%"><em>0,725</em></b>
+                            </div>
+                            <div class="comp-escala-ticks">
+                                <span style="left:0%">0</span><span style="left:60%">0,6</span>
+                                <span style="left:80%">0,8</span><span style="left:100%">1,0</span>
+                            </div>
+                            <p class="comp-escala-legenda">Régua de r. Neste exemplo: <span class="comp-selo med">aceitável</span></p>
+                        </div>
+                    </div>
+
+                    <!-- ---------- 6. WILLMOTT d ---------- -->
+                    <div class="comp-metrica" id="metrica-d">
+                        <h4>6</span> WILLMOTT d — ÍNDICE DE CONCORDÂNCIA</h4>
+
+                        <p>
+                            O índice d de Willmott, proposto por Willmott em 1981, é uma medida
+                            de concordância que complementa a correlação de Pearson. Enquanto o
+                            coeficiente r mede apenas se as duas séries se movimentam juntas, o
+                            índice d também penaliza diferenças de média entre elas. Isso o torna
+                            especialmente útil em contextos em que se deseja avaliar não apenas
+                            a coordenação temporal, mas a proximidade efetiva entre os valores
+                            medidos.
+                        </p>
+
+                        <p>
+                            Formalmente, o índice d é definido pela expressão:
+                        </p>
+
+                        <div class="comp-metrica-formula">
+                            $$d = 1 - \frac{\sum_{i=1}^{N} (x_i - y_i)^2}{\sum_{i=1}^{N} \left( |x_i - \overline{x}| + |y_i - \overline{y}| \right)^2}$$
+                        </div>
+
+                        <p>
+                            O índice varia de 0 a 1, sendo que d = 1 representa concordância
+                            perfeita e d = 0 representa discordância total. Valores acima de 0,8
+                            indicam boa concordância; valores entre 0,6 e 0,8 são aceitáveis;
+                            valores abaixo de 0,6 indicam discordância importante.
+                        </p>
+
+                        <p>
+                            A principal vantagem do d sobre o r está na sua robustez a diferenças
+                            sistemáticas de nível. Se duas estações medem temperaturas que sobem
+                            e descem juntas, mas sempre com uma diferença constante de 2 °C entre
+                            elas, o coeficiente r pode ser alto (próximo de 0,95), sugerindo boa
+                            relação entre as séries. No entanto, o índice d captura essa diferença
+                            de média e resulta em um valor mais baixo, refletindo a discordância
+                            real entre as medições. Por isso, d é considerado um indicador mais
+                            conservador e mais adequado para validação de séries meteorológicas.
+                        </p>
+
+                        <p>
+                            No contexto deste projeto, o índice d entre UFRA e 82191 para
+                            temperatura máxima é de 0,846, o que está acima do limiar de 0,8 e
+                            indica boa concordância entre as duas séries. Esse resultado contrasta
+                            com a correlação r de 0,725, que é apenas aceitável. A diferença entre
+                            os dois indicadores reflete o fato de que, embora as séries não se
+                            movimentem tão coordenadamente quanto o ideal, elas concordam bem em
+                            valor absoluto, o que é o aspecto mais relevante para fins de
+                            aplicação meteorológica e agronômica.
+                        </p>
+
+                        <div class="comp-escala" role="img" aria-label="Régua do d de Willmott: 0,846 está na faixa excelente (acima de 0,8)">
+                            <div class="comp-escala-trilho">
+                                <span class="z-ruim" style="flex:60"></span>
+                                <span class="z-med" style="flex:20"></span>
+                                <span class="z-bom" style="flex:20"></span>
+                                <b class="comp-escala-marca" style="left:84.6%"><em>0,846</em></b>
+                            </div>
+                            <div class="comp-escala-ticks">
+                                <span style="left:0%">0</span><span style="left:60%">0,6</span>
+                                <span style="left:80%">0,8</span><span style="left:100%">1,0</span>
+                            </div>
+                            <p class="comp-escala-legenda">Régua de d. Neste exemplo: <span class="comp-selo bom">excelente</span></p>
+                        </div>
+                    </div>
+
+                    <!-- ---------- 7. INTERVALO DE CONFIANÇA ---------- -->
+                    <div class="comp-metrica" id="metrica-ic">
+                        <h4>INTERVALO DE CONFIANÇA (IC 95%)</h4>
+
+                        <p>
+                            O intervalo de confiança de 95% representa a faixa de valores em que
+                            o viés verdadeiro da população provavelmente se encontra, com 95% de
+                            confiança. Ele é uma medida da incerteza associada à estimativa do
+                            viés médio, e depende tanto do número de observações pareadas quanto
+                            da dispersão das diferenças entre as estações.
+                        </p>
+
+                        <p>
+                            Formalmente, o intervalo de confiança é calculado a partir do viés
+                            médio observado, acrescido e subtraído de uma margem de erro:
+                        </p>
+
+                        <div class="comp-metrica-formula">
+                            $$\text{IC}_{95\%} = \text{Viés} \pm 1{,}96 \cdot \frac{\sigma_{\text{dif}}}{\sqrt{N}}$$
+                        </div>
+
+                        <p>
+                            A interpretação correta do intervalo de confiança é: se o experimento
+                            fosse repetido inúmeras vezes, em 95% delas o viés verdadeiro estaria
+                            dentro do intervalo calculado. Do ponto de vista prático, o IC fornece
+                            uma medida de quão confiável é a estimativa do viés. Quanto maior o N
+                            e menor o desvio padrão das diferenças, mais estreito será o intervalo,
+                            e mais precisa será a estimativa.
+                        </p>
+
+                        <p>
+                            Uma aplicação direta do intervalo de confiança é o teste de
+                            significância do viés. Se o intervalo de confiança inclui o zero,
+                            não é possível afirmar, com 95% de confiança, que existe viés entre
+                            as duas estações. Se o intervalo não inclui o zero, o viés é
+                            considerado estatisticamente significativo. No entanto, é importante
+                            não confundir significância estatística com relevância prática. Com
+                            N suficientemente grande, até um viés de 0,1 °C pode ser
+                            estatisticamente significativo, ainda que irrelevante do ponto de
+                            vista operacional. Por isso, a interpretação do IC deve ser sempre
+                            acompanhada dos critérios de relevância adotados neste projeto
+                            (limiar de 0,3 °C para viés excelente).
+                        </p>
+
+                        <p>
+                            Outro aspecto a considerar é que a fórmula do IC assume
+                            independência entre as observações diárias. Na prática, séries
+                            meteorológicas apresentam autocorrelação temporal: um dia quente
+                            tende a ser seguido por outro dia quente. Essa autocorrelação faz
+                            com que o intervalo real seja mais largo que o calculado pela fórmula
+                            padrão. Esse é um limite conhecido da abordagem e deve ser considerado
+                            na interpretação final.
+                        </p>
+
+                        <p>
+                            No contexto deste projeto, o viés entre UFRA e 82191 para temperatura
+                            máxima é de +0,009 °C, com intervalo de confiança de 95% em
+                            [−0,045, +0,063] °C. Como o intervalo inclui o zero, não há evidência
+                            estatística de viés entre as duas estações para essa variável. Em
+                            contraste, o viés entre UFRA e 82191 para temperatura mínima no
+                            período 2018–2022 é de −1,09 °C, com intervalo de confiança de 95%
+                            em [−1,15, −1,03] °C. Nesse caso, o intervalo não inclui o zero,
+                            indicando viés estatisticamente significativo e de magnitude
+                            relevante.
+                        </p>
+                    </div>
+
+                    <!-- ---------- 8. COBERTURA ---------- -->
+                    <div class="comp-metrica" id="metrica-cobertura">
+                        <h4>COBERTURA DOS DADOS</h4>
+
+                        <p>
+                            A cobertura representa a fração do período total em que as duas
+                            estações comparadas têm valor válido simultaneamente. Ela é expressa
+                            em porcentagem e complementa o N pareado: um N alto em um período
+                            muito longo pode ainda representar uma cobertura baixa, o que
+                            significa que as métricas calculadas descrevem apenas uma parte do
+                            período analisado.
+                        </p>
+
+                        <p>
+                            Formalmente, a cobertura é definida como a razão entre o número de
+                            dias pareados e o número total de dias do período:
+                        </p>
+
+                        <div class="comp-metrica-formula">
+                            $$\text{Cobertura} = \frac{N_{\text{pareado}}}{N_{\text{período}}} \times 100\%$$
+                        </div>
+
+                        <p>
+                            Coberturas acima de 90% indicam que a comparação abrange praticamente
+                            todo o período, sendo consideradas excelentes. Coberturas entre 70% e
+                            90% são aceitáveis, mas já indicam que parte da série não foi comparada.
+                            Coberturas abaixo de 70% são consideradas ruins e exigem cautela: as
+                            métricas podem estar descrevendo apenas uma parte do período, e é
+                            possível que essa parte seja justamente a de melhor funcionamento dos
+                            sensores, o que introduz um viés de seleção.
+                        </p>
+
+                        <p>
+                            A cobertura é particularmente importante em séries meteorológicas
+                            obtidas por estações automáticas, que podem apresentar falhas
+                            silenciosas de sensor. Em muitos casos, a ausência de dado não é
+                            aleatória: ela pode se concentrar em horários ou períodos específicos,
+                            introduzindo viés nos resultados. Por isso, a cobertura deve ser
+                            sempre reportada junto com as demais métricas, para que o leitor
+                            possa avaliar a representatividade dos valores calculados.
+                        </p>
+
+                        <p>
+                            No contexto deste projeto, a cobertura entre UFRA e 82191 para
+                            temperatura máxima em 2024 é de 68,9%. Considerando que o ano tem
+                            366 dias e o N pareado é de 252, isso significa que aproximadamente
+                            um terço dos dias do ano não pôde ser comparado. Essa cobertura é
+                            classificada como ruim, e é consequência direta da ausência de
+                            observador em vários períodos na estação 82191. Esse resultado
+                            ressalta a importância de reportar a cobertura junto com o viés e o
+                            RMSE, para que o leitor possa avaliar o grau de representatividade
+                            das métricas.
+                        </p>
+
+                        <div class="comp-escala" role="img" aria-label="Régua da cobertura: 68,9% está na faixa ruim (70% ou menos)">
+                            <div class="comp-escala-trilho">
+                                <span class="z-ruim" style="flex:70"></span>
+                                <span class="z-med" style="flex:20"></span>
+                                <span class="z-bom" style="flex:10"></span>
+                                <b class="comp-escala-marca" style="left:68.9%"><em>68,9%</em></b>
+                            </div>
+                            <div class="comp-escala-ticks">
+                                <span style="left:0%">0</span><span style="left:70%">70%</span>
+                                <span style="left:90%">90%</span><span style="left:100%">100%</span>
+                            </div>
+                            <p class="comp-escala-legenda">Régua de cobertura.</p>
+                        </div>
+                    </div>
+
+                    <!-- ---------- LEITURA CONJUNTA ---------- -->
+                    <div class="comp-metrica" id="metrica-conjunto">
+                        <h4>COMO LER AS MÉTRICAS EM CONJUNTO</h4>
+
+                        <p>
+                            Nenhuma das métricas apresentadas nas seções anteriores deve ser
+                            interpretada isoladamente. Cada uma responde a uma pergunta específica,
+                            e a leitura conjunta é o que permite um diagnóstico completo sobre a
+                            concordância entre duas estações. A sequência sugerida para essa
+                            leitura é:
+                        </p>
+
+                        <ol class="comp-passos">
+                            <li><strong>Verificar N pareado e cobertura.</strong> Se essas duas métricas estiverem fracas, todas as demais devem ser interpretadas com cautela.</li>
+                            <li><strong>Analisar o viés médio e seu intervalo de confiança.</strong> Existe deslocamento sistemático entre as estações? Esse deslocamento é estatisticamente significativo e operacionalmente relevante?</li>
+                            <li><strong>Comparar o RMSE com o desvio padrão das diferenças.</strong> O erro entre as estações é predominantemente sistemático (corrigível por calibração) ou aleatório (ruído residual)?</li>
+                            <li><strong>Avaliar a correlação r e o índice d de Willmott.</strong> As séries se movimentam de forma coordenada e concordam em valor absoluto?</li>
+                        </ol>
+
+                        <p>
+                            Diferentes combinações de resultados sugerem diferentes diagnósticos.
+                            A tabela a seguir apresenta as principais interpretações:
+                        </p>
+
+                        <div class="comp-tabela-scroll">
+                            <table class="comp-metrica-tabela">
+                                <thead>
+                                    <tr><th>Padrão observado</th><th>Leitura provável</th><th>O que investigar</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>|Viés| alto, desvio pequeno, r alto</td>
+                                        <td>Deslocamento constante entre as estações</td>
+                                        <td>Calibração, altura e abrigo do sensor, exposição do local</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Viés ≈ 0, RMSE alto, r baixo</td>
+                                        <td>Sem deslocamento, mas muito ruído</td>
+                                        <td>Falhas pontuais, valores espúrios, janela de 24 h usada para Tmax e Tmin (UTC × hora local)</td>
+                                    </tr>
+                                    <tr>
+                                        <td>r alto, d baixo</td>
+                                        <td>Variam juntas, mas em níveis diferentes</td>
+                                        <td>Viés ou diferença de escala entre os sensores</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Todas as métricas boas</td>
+                                        <td>Estações intercambiáveis para esta variável</td>
+                                        <td>Confirmar que a cobertura também é boa</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <p>
+                            Algumas armadilhas comuns devem ser evitadas na leitura dessas
+                            métricas. A primeira é comparar anos ou períodos diferentes sem
+                            atentar para o fato de que N e cobertura mudam, tornando as métricas
+                            não comparáveis. A segunda é permitir que um único dia com erro
+                            muito grande distorça o RMSE: como o RMSE eleva ao quadrado as
+                            diferenças, um erro de 8 °C entra com peso 64 na soma, enquanto um
+                            erro de 1 °C entra com peso 1. A terceira é concluir sobre a
+                            concordância entre estações com base apenas na correlação, ignorando
+                            o viés: uma correlação alta com viés alto ainda representa
+                            discordância relevante.
+                        </p>
+                    </div>
+
+                    <!-- ---------- CRITÉRIOS GERAIS ---------- -->
+                    <div class="comp-metrica comp-metrica-criterios" id="metrica-criterios">
+                        <h4 style="font-size: 22px;">CRITÉRIOS DE AVALIAÇÃO USADOS NESTE PROJETO</h4>
+
+                        <p>
+                            Os critérios a seguir foram adotados para classificar os resultados
+                            das métricas em três categorias: excelente, aceitável e ruim. Esses
+                            critérios são baseados em referências da literatura meteorológica e
+                            foram calibrados para o contexto tropical equatorial de Belém do Pará.
+                        </p>
+
+                        <div class="comp-tabela-scroll">
+                            <table class="comp-metrica-tabela">
+                                <thead>
+                                    <tr>
+                                        <th>Métrica</th>
+                                        <th>Excelente</th>
+                                        <th>Aceitável</th>
+                                        <th>Ruim</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Viés médio</td>
+                                        <td><span class="comp-selo bom">|viés| &lt; 0,3 °C</span></td>
+                                        <td><span class="comp-selo med">|viés| &lt; 1,0 °C</span></td>
+                                        <td><span class="comp-selo ruim">|viés| ≥ 1,0 °C</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>RMSE</td>
+                                        <td><span class="comp-selo bom">&lt; 1,0 °C</span></td>
+                                        <td><span class="comp-selo med">&lt; 2,0 °C</span></td>
+                                        <td><span class="comp-selo ruim">≥ 2,0 °C</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Correlação r</td>
+                                        <td><span class="comp-selo bom">&gt; 0,8</span></td>
+                                        <td><span class="comp-selo med">&gt; 0,6</span></td>
+                                        <td><span class="comp-selo ruim">≤ 0,6</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Willmott d</td>
+                                        <td><span class="comp-selo bom">&gt; 0,8</span></td>
+                                        <td><span class="comp-selo med">&gt; 0,6</span></td>
+                                        <td><span class="comp-selo ruim">≤ 0,6</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Cobertura</td>
+                                        <td><span class="comp-selo bom">&gt; 90%</span></td>
+                                        <td><span class="comp-selo med">&gt; 70%</span></td>
+                                        <td><span class="comp-selo ruim">≤ 70%</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="comp-metrica-referencia">
+                            <h4 style="font-size: 20pt;">REFERÊNCIAS BIBLIOGRÁFICAS:</h4><br>
+                            <p>Willmott, C. J. (1981). On the validation of models.
+                            <em>Physical Geography</em>, 2(2), 184–194.</p>
+                            <p>Emery, W. J.; Thomson, R. E. (2001).
+                            <em>Data Analysis Methods in Physical Oceanography</em>.
+                            2. ed. Elsevier.</p>
+                        </div>
+                    </div>
+
+                </div>
+                <!-- /fim da seção de métricas -->
+
+            </div>
+
+            <!-- ABA TABELA DIÁRIA -->
+            <div class="comp-painel" id="painel-diaria">
+                <div class="comp-tabela-wrapper">
+                    <table class="comp-tabela" id="tabela-diaria">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>UFRA</th>
+                                <th>82191</th>
+                                <th>A201</th>
+                                <th>UFRA − 82191</th>
+                                <th>UFRA − A201</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="6" class="comp-tabela-vazia">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ABA TABELA MENSAL -->
+            <div class="comp-painel" id="painel-mensal">
+                <div class="comp-tabela-wrapper">
+                    <table class="comp-tabela" id="tabela-mensal">
+                        <thead>
+                            <tr>
+                                <th>Mês</th>
+                                <th>UFRA</th>
+                                <th>82191</th>
+                                <th>A201</th>
+                                <th>UFRA − 82191</th>
+                                <th>UFRA − A201</th>
+                                <th>82191 − A201</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="7" class="comp-tabela-vazia">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- JS -->
+    <script src="{{ url_for('static', filename='grafico.js') }}"></script>
+
+</body>
+</html>

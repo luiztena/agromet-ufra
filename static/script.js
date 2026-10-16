@@ -47,7 +47,6 @@ var icon = L.divIcon({
 });
 
 var marker = null;
-var chartInstance = null;
 
 
 // ============ HELPERS DE FORMATO DE DATA ============
@@ -149,125 +148,10 @@ function voltarUltima() {
 }
 
 
-// ============ GRÁFICO ============
-
-async function abrirGrafico() {
-    document.getElementById('grafico-container').style.display = 'block';
-    await carregarGrafico(7);
-}
-
-function fecharGrafico() {
-    document.getElementById('grafico-container').style.display = 'none';
-    if (chartInstance) {
-        chartInstance.destroy();
-        chartInstance = null;
-    }
-}
-
 function anoSelecionado() {
     var el = document.getElementById('ano-escolhido');
     var v = el ? el.value : '';
     return v ? parseInt(v, 10) : null;
-}
-
-async function carregarGrafico(dias) {
-    try {
-        var ano = anoSelecionado();
-
-        // Passo 1: descobrir quantos registros COM DADOS existem no ano
-        // (com_dados=true filtra WHERE tar IS NOT NULL no backend)
-        var urlContagem = '/api/todas?limite=1&com_dados=true';
-        if (ano) urlContagem += '&ano=' + ano;
-        var respContagem = await fetch(urlContagem);
-        var dadosContagem = await respContagem.json();
-        var totalComDados = dadosContagem.total || 0;
-
-        // Passo 2: calcular offset para pegar os ULTIMOS `dias` que TEM dado
-        var offset = Math.max(0, totalComDados - dias);
-
-        var urlTodas = '/api/todas?limite=' + dias + '&offset=' + offset + '&com_dados=true';
-        if (ano) urlTodas += '&ano=' + ano;
-
-        var resp = await fetch(urlTodas);
-        var dados = await resp.json();
-        var registros = dados.dados || [];
-
-        var labels = [];
-        var temps09 = [];
-        var tempsMin = [];
-        var tempsMax = [];
-
-        for (var i = 0; i < registros.length; i++) {
-            var d = registros[i];
-            labels.push(formatarDataCurta(d.data));
-            temps09.push(d.temperatura_09h != null ? d.temperatura_09h : null);
-            tempsMin.push(d.temp_min != null ? d.temp_min : null);
-            tempsMax.push(d.temp_max != null ? d.temp_max : null);
-        }
-
-        var ctx = document.getElementById('grafico-temperatura').getContext('2d');
-        if (chartInstance) chartInstance.destroy();
-
-        chartInstance = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: 'Temp. 09h',
-                        data: temps09,
-                        borderColor: '#e74c3c',
-                        backgroundColor: 'rgba(231, 76, 60, 0.05)',
-                        borderWidth: 2,
-                        tension: 0.3,
-                        pointRadius: dias > 30 ? 0 : 3,
-                        pointBackgroundColor: '#e74c3c'
-                    },
-                    {
-                        label: 'Temp. Mínima',
-                        data: tempsMin,
-                        borderColor: '#3498db',
-                        backgroundColor: 'rgba(52, 152, 219, 0.05)',
-                        borderWidth: 1.5,
-                        tension: 0.3,
-                        pointRadius: dias > 30 ? 0 : 2,
-                        pointBackgroundColor: '#3498db'
-                    },
-                    {
-                        label: 'Temp. Máxima (dia anterior)',
-                        data: tempsMax,
-                        borderColor: '#e67e22',
-                        backgroundColor: 'rgba(230, 126, 34, 0.05)',
-                        borderWidth: 1.5,
-                        tension: 0.3,
-                        pointRadius: dias > 30 ? 0 : 2,
-                        pointBackgroundColor: '#e67e22'
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                interaction: { intersect: false, mode: 'index' },
-                plugins: {
-                    legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10, font: { size: 11 } } },
-                    tooltip: { callbacks: { title: function (items) { return items[0].label; } } }
-                },
-                scales: {
-                    y: {
-                        title: { display: true, text: 'Temperatura (°C)', font: { size: 11 } },
-                        grid: { color: 'rgba(0,0,0,0.05)' }
-                    },
-                    x: {
-                        grid: { display: false },
-                        ticks: { maxTicksLimit: dias > 90 ? 12 : dias > 30 ? 10 : 7, font: { size: 10 } }
-                    }
-                }
-            }
-        });
-    } catch (error) {
-        console.error('Erro ao carregar gráfico:', error);
-    }
 }
 
 function aoTrocarAno() {
@@ -280,11 +164,6 @@ function aoTrocarAno() {
     input.value = '';
 
     buscarUltimaObservacao();
-
-    var gc = document.getElementById('grafico-container');
-    if (gc && gc.style.display === 'block') {
-        carregarGrafico(7);
-    }
 }
 
 
@@ -306,20 +185,30 @@ async function atualizarMapa(dados) {
 
     var dataObs = dados.data_iso || dados.data || '--';
 
-    var balancoEnergia = null;
-    try {
-        var dataParaBalanco = dados.data_iso
-            ? (dados.data_iso.split('-')[2] + '/' + dados.data_iso.split('-')[1] + '/' + dados.data_iso.split('-')[0])
-            : (dados.data || null);
+    // Só tenta carregar o balanço se TODOS os campos necessários existirem
+    var temDadosParaBalanco = (
+        dados.temperatura_09h != null &&
+        dados.umidade_09h != null &&
+        dados.temp_min != null &&
+        dados.temp_max != null
+    );
 
-        if (dataParaBalanco) {
-            var respBalanco = await fetch('/api/balanco/' + dataParaBalanco);
-            if (respBalanco.ok) {
-                balancoEnergia = await respBalanco.json();
+    var balancoEnergia = null;
+    if (temDadosParaBalanco) {
+        try {
+            var dataParaBalanco = dados.data_iso
+                ? (dados.data_iso.split('-')[2] + '/' + dados.data_iso.split('-')[1] + '/' + dados.data_iso.split('-')[0])
+                : (dados.data || null);
+
+            if (dataParaBalanco) {
+                var respBalanco = await fetch('/api/balanco/' + dataParaBalanco);
+                if (respBalanco.ok) {
+                    balancoEnergia = await respBalanco.json();
+                }
             }
+        } catch (e) {
+            console.log('Modulo agrometeorologico indisponivel');
         }
-    } catch (e) {
-        console.log('Modulo agrometeorologico indisponivel');
     }
 
     var popupContent = '' +

@@ -372,10 +372,14 @@ def index():
         data_fim=data_fim,
     )
 
+@app.route("/grafico")
+def pagina_grafico():
+    """Página separada para gráficos e séries temporais."""
+    return render_template("grafico.html")
 
 @app.route("/api/ultima")
 def ultima_observacao():
-    """Retorna a última observação completa (com temp_09h) disponível."""
+    """Retorna a última observação completa (com tar, ur, tmin e tmax)."""
     linhas = consultar_banco("""
         SELECT data_iso, dia_semana, hora_local, protocolo,
                tar, ur, direcao_vento,
@@ -383,6 +387,9 @@ def ultima_observacao():
                observadores, evento
         FROM observacoes
         WHERE tar IS NOT NULL
+          AND ur IS NOT NULL
+          AND tmin IS NOT NULL
+          AND tmax IS NOT NULL
         ORDER BY data_iso DESC, hora_local DESC
         LIMIT 2
     """)
@@ -633,6 +640,497 @@ def resumo_estatistico():
         "total_observacoes": info.get("total_observacoes", 0),
     })
 
+# ===========================================================================
+# COMPARAÇÃO TRIPLA: UFRA × INMET 82191 × INMET A201
+# ===========================================================================
+#
+# Objetivo: expor um endpoint que retorna os dados diários das três
+# estações (Tmin ou Tmax) para um ano, junto com métricas comparativas.
+#
+# Estratégia: leitura sob demanda dos CSVs do INMET. A UFRA vem do
+# SQLite (ispaam.db). Cabeçalhos são detectados dinamicamente.
+#
+# ===========================================================================
 
+from pathlib import Path
+import csv as _csv
+
+
+# --- Localização dos CSVs do INMET -----------------------------------------
+# Ajuste se mover os arquivos
+DIR_INMET = Path(__file__).resolve().parent / "planilha" / "INMET" / "Dados de entrada"
+
+ARQUIVOS_INMET = {
+    "82191": DIR_INMET / "dados_82191_D_2018-01-01_2025-12-31.csv",
+    "a201":  DIR_INMET / "dados_A201_H_2018-01-01_2025-12-31.csv",
+}
+
+
+# --- Cache em memória -------------------------------------------------------
+# Evita reler o CSV a cada requisição. Recarrega só se o processo reiniciar.
+_cache_inmet = {}
+_cache_ufra = {}
+
+
+def _normalizar_data_iso(s):
+    """Converte 'YYYY-MM-DD', 'DD/MM/YYYY' ou 'DD/MM' para 'YYYY-MM-DD'."""
+    s = str(s).strip()
+    if not s:
+        return None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m"):
+        try:
+            from datetime import datetime as _dt
+            if fmt == "%d/%m":
+                dt = _dt.strptime(s, fmt)
+                # usa ano atual se não houver ano
+                return None  # não aceita sem ano aqui
+            return _dt.strptime(s, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return None
+
+
+def _para_float(s):
+    if s is None:
+        return None
+    if isinstance(s, (int, float)):
+        return float(s)
+    s = str(s).strip()
+    if not s or s.lower() == "null" or s in ("-", "--", ""):
+        return None
+    try:
+        return float(s.replace(",", "."))
+    except ValueError:
+        return None
+
+
+def _carregar_inmet_82191():
+    """
+    Lê o CSV diário da 82191 (convencional).
+    Retorna dict: {"YYYY-MM-DD": {"tmax": float, "tmin": float}}
+    """
+    if "82191" in _cache_inmet:
+        return _cache_inmet["82191"]
+
+    caminho = ARQUIVOS_INMET["82191"]
+    if not caminho.exists():
+        _cache_inmet["82191"] = {}
+        return {}
+
+    with open(caminho, encoding="utf-8") as f:
+        linhas = f.readlines()
+
+    idx_cab = next((i for i, l in enumerate(linhas) if l.startswith("Data Medicao")), None)
+    if idx_cab is None:
+        _cache_inmet["82191"] = {}
+        return {}
+
+    cabecalho = [c.strip() for c in linhas[idx_cab].strip().split(";")]
+    idx = {nome: j for j, nome in enumerate(cabecalho)}
+
+    col_data = idx.get("Data Medicao")
+    col_tmax = idx.get("TEMPERATURA MAXIMA, DIARIA(°C)")
+    col_tmin = idx.get("TEMPERATURA MINIMA, DIARIA(°C)")
+
+    if col_data is None:
+        _cache_inmet["82191"] = {}
+        return {}
+
+    dados = {}
+    for linha in linhas[idx_cab + 1:]:
+        partes = [p.strip() for p in linha.strip().split(";")]
+        if len(partes) <= max(col_data, col_tmax or 0, col_tmin or 0):
+            continue
+        data = _normalizar_data_iso(partes[col_data])
+        if not data:
+            continue
+
+        tmax = _para_float(partes[col_tmax]) if col_tmax is not None else None
+        tmin = _para_float(partes[col_tmin]) if col_tmin is not None else None
+
+        if tmax is None and tmin is None:
+            continue
+
+        dados[data] = {"tmax": tmax, "tmin": tmin}
+
+    _cache_inmet["82191"] = dados
+    return dados
+
+
+def _carregar_inmet_a201():
+    """
+    Lê o CSV horário da A201 (automática).
+    Para Tmax diária: máximo de TEMPERATURA MAXIMA NA HORA ANT.
+    Para Tmin diária: mínimo de TEMPERATURA MINIMA NA HORA ANT.
+    Retorna dict: {"YYYY-MM-DD": {"tmax": float, "tmin": float}}
+    """
+    if "a201" in _cache_inmet:
+        return _cache_inmet["a201"]
+
+    caminho = ARQUIVOS_INMET["a201"]
+    if not caminho.exists():
+        _cache_inmet["a201"] = {}
+        return {}
+
+    with open(caminho, encoding="utf-8") as f:
+        linhas = f.readlines()
+
+    idx_cab = next((i for i, l in enumerate(linhas) if l.startswith("Data Medicao")), None)
+    if idx_cab is None:
+        _cache_inmet["a201"] = {}
+        return {}
+
+    cabecalho = [c.strip() for c in linhas[idx_cab].strip().split(";")]
+    idx = {nome: j for j, nome in enumerate(cabecalho)}
+
+    col_data = idx.get("Data Medicao")
+    col_tmax = idx.get("TEMPERATURA MAXIMA NA HORA ANT. (AUT)(°C)")
+    col_tmin = idx.get("TEMPERATURA MINIMA NA HORA ANT. (AUT)(°C)")
+
+    if col_data is None:
+        _cache_inmet["a201"] = {}
+        return {}
+
+    por_dia = {}
+    for linha in linhas[idx_cab + 1:]:
+        partes = [p.strip() for p in linha.strip().split(";")]
+        if len(partes) <= max(col_data, col_tmax or 0, col_tmin or 0):
+            continue
+        data = _normalizar_data_iso(partes[col_data])
+        if not data:
+            continue
+
+        tmax = _para_float(partes[col_tmax]) if col_tmax is not None else None
+        tmin = _para_float(partes[col_tmin]) if col_tmin is not None else None
+
+        d = por_dia.setdefault(data, {"tmax": [], "tmin": []})
+        if tmax is not None:
+            d["tmax"].append(tmax)
+        if tmin is not None:
+            d["tmin"].append(tmin)
+
+    resultado = {}
+    for data, d in por_dia.items():
+        resultado[data] = {
+            "tmax": max(d["tmax"]) if d["tmax"] else None,
+            "tmin": min(d["tmin"]) if d["tmin"] else None,
+        }
+
+    _cache_inmet["a201"] = resultado
+    return resultado
+
+
+def _carregar_ufra():
+    """
+    Lê todos os dados diários da UFRA do SQLite uma vez.
+    Retorna dict: {"YYYY-MM-DD": {"tmax": ..., "tmin": ...}}
+    """
+    if "ufra" in _cache_ufra:
+        return _cache_ufra["ufra"]
+
+    linhas = consultar_banco("""
+        SELECT data_iso,
+               tmax_real AS tmax,
+               tmin_real AS tmin
+        FROM observacoes
+        WHERE hora_local = '09:00'
+        ORDER BY data_iso
+    """)
+
+    dados = {}
+    for r in linhas:
+        data = r["data_iso"]
+        if not data:
+            continue
+        dados[data] = {
+            "tmax": _para_float(r["tmax"]),
+            "tmin": _para_float(r["tmin"]),
+        }
+
+    _cache_ufra["ufra"] = dados
+    return dados
+
+
+def _metricas_pareadas(pares):
+    """
+    pares: lista de tuplas (a, b) já filtradas onde ambos não são None.
+    Retorna dict com viés médio, desvio, RMSE, r, Willmott d, IC95.
+    """
+    import math
+    n = len(pares)
+    if n < 2:
+        return None
+
+    difs = [a - b for (a, b) in pares]
+    xs = [a for (a, b) in pares]
+    ys = [b for (a, b) in pares]
+
+    media = sum(difs) / n
+    var = sum((d - media) ** 2 for d in difs) / n
+    desvio = math.sqrt(var)
+    rmse = math.sqrt(sum(d * d for d in difs) / n)
+
+    # IC95
+    se = desvio / math.sqrt(n)
+    ic_inf = media - 1.96 * se
+    ic_sup = media + 1.96 * se
+
+    # Pearson
+    mx = sum(xs) / n
+    my = sum(ys) / n
+    cov = sum((xs[i] - mx) * (ys[i] - my) for i in range(n)) / n
+    dx = math.sqrt(sum((x - mx) ** 2 for x in xs) / n)
+    dy = math.sqrt(sum((y - my) ** 2 for y in ys) / n)
+    r = cov / (dx * dy) if dx * dy > 0 else None
+
+    # Willmott d
+    num_d = sum((xs[i] - ys[i]) ** 2 for i in range(n))
+    den_d = sum((abs(xs[i] - mx) + abs(ys[i] - my)) ** 2 for i in range(n))
+    d_willmott = 1 - (num_d / den_d) if den_d > 0 else None
+
+    return {
+        "n": n,
+        "vies": round(media, 4),
+        "desvio": round(desvio, 4),
+        "rmse": round(rmse, 4),
+        "ic_inf": round(ic_inf, 4),
+        "ic_sup": round(ic_sup, 4),
+        "r": round(r, 4) if r is not None else None,
+        "d": round(d_willmott, 4) if d_willmott is not None else None,
+    }
+
+
+# --- Rotas ------------------------------------------------------------------
+
+@app.route("/api/comparacao/anos")
+def comparacao_anos():
+    """
+    Retorna os anos que têm dados nas três fontes.
+    A comparação tripla exige que as três tenham pelo menos 1 dia no ano.
+    """
+    from collections import defaultdict
+
+    ufra = _carregar_ufra()
+    inmet_82191 = _carregar_inmet_82191()
+    a201 = _carregar_inmet_a201()
+
+    # Conta dias por ano em cada fonte
+    anos_ufra = defaultdict(int)
+    anos_82191 = defaultdict(int)
+    anos_a201 = defaultdict(int)
+
+    for data in ufra:
+        anos_ufra[data[:4]] += 1
+    for data in inmet_82191:
+        anos_82191[data[:4]] += 1
+    for data in a201:
+        anos_a201[data[:4]] += 1
+
+    # Anos com pelo menos 1 dia em cada fonte
+    todos = set(anos_ufra) & set(anos_82191) & set(anos_a201)
+    anos = sorted(int(a) for a in todos)
+
+    return jsonify({
+        "anos": anos,
+        "detalhes": [
+            {
+                "ano": int(a),
+                "ufra": anos_ufra.get(a, 0),
+                "82191": anos_82191.get(a, 0),
+                "a201": anos_a201.get(a, 0),
+            }
+            for a in sorted(todos)
+        ]
+    })
+
+
+@app.route("/api/comparacao/<int:ano>/<variavel>")
+def comparacao_diaria(ano, variavel):
+    """
+    Retorna os dados diários das três estações para um ano.
+
+    Parâmetros:
+        ano      : 2018, 2019, ..., 2026
+        variavel : tmax ou tmin
+
+    Query params opcionais:
+        estacoes : CSV com as estações a incluir (ex: ufra,82191)
+                   Se omitido, retorna todas as disponíveis.
+
+    Retorna JSON com:
+        - dados: lista de {data, ufra, "82191", a201}
+        - resumo: métricas pareadas para cada par
+        - avisos: lacunas detectadas
+    """
+    from collections import defaultdict
+
+    variavel = variavel.lower().strip()
+    if variavel not in ("tmax", "tmin"):
+        return jsonify({"erro": "Variável deve ser 'tmax' ou 'tmin'"}), 400
+
+    # Filtro de estações via query string
+    estacoes_param = request.args.get("estacoes", "").strip().lower()
+    if estacoes_param:
+        estacoes_pedidas = set(e.strip() for e in estacoes_param.split(",") if e.strip())
+    else:
+        estacoes_pedidas = {"ufra", "82191", "a201"}
+
+    # Carrega as três fontes
+    ufra = _carregar_ufra()
+    inmet_82191 = _carregar_inmet_82191()
+    a201 = _carregar_inmet_a201()
+
+    # Filtra por ano
+    prefixo = f"{ano}-"
+    datas = set()
+    for base in (ufra, inmet_82191, a201):
+        for data in base:
+            if data.startswith(prefixo):
+                datas.add(data)
+    datas = sorted(datas)
+
+    if not datas:
+        return jsonify({
+            "erro": f"Nenhum dado para {ano}",
+            "ano": ano,
+            "variavel": variavel,
+        }), 404
+
+    # Monta os pares diários
+    # Cada linha: {"data": ..., "ufra": ..., "82191": ..., "a201": ...}
+    linhas = []
+    contagem = {"ufra": 0, "82191": 0, "a201": 0}
+    contagem_validos = {"ufra": 0, "82191": 0, "a201": 0}
+
+    for data in datas:
+        linha = {"data": data}
+
+        if "ufra" in estacoes_pedidas:
+            v = ufra.get(data, {}).get(variavel)
+            linha["ufra"] = v
+            if v is not None:
+                contagem["ufra"] += 1
+        if "82191" in estacoes_pedidas:
+            v = inmet_82191.get(data, {}).get(variavel)
+            linha["82191"] = v
+            if v is not None:
+                contagem["82191"] += 1
+        if "a201" in estacoes_pedidas:
+            v = a201.get(data, {}).get(variavel)
+            linha["a201"] = v
+            if v is not None:
+                contagem["a201"] += 1
+
+        linhas.append(linha)
+
+        # Conta total de dias com pelo menos uma fonte
+        for fonte in contagem:
+            if fonte in linha and linha[fonte] is not None:
+                contagem_validos[fonte] += 1
+
+    # Calcula métricas por par
+    resumo = {}
+
+    def pares_entre(fonte_a, fonte_b):
+        out = []
+        for linha in linhas:
+            a = linha.get(fonte_a)
+            b = linha.get(fonte_b)
+            if a is not None and b is not None:
+                out.append((a, b))
+        return out
+
+    pares_possiveis = [
+        ("ufra", "82191"),
+        ("ufra", "a201"),
+        ("82191", "a201"),
+    ]
+    for fonte_a, fonte_b in pares_possiveis:
+        if fonte_a in estacoes_pedidas and fonte_b in estacoes_pedidas:
+            chave = f"{fonte_a}_vs_{fonte_b}"
+            resumo[chave] = _metricas_pareadas(pares_entre(fonte_a, fonte_b))
+
+    # Avisos
+    avisos = []
+    if ano >= 2023 and variavel == "tmin":
+        avisos.append(
+            "A série de Tmin da UFRA tem falha instrumental entre jul/2023 e jan/2025."
+        )
+    if ano <= 2020 and variavel == "tmin":
+        avisos.append(
+            "Cobertura de Tmin em 2018–2020 pode ser parcial na UFRA."
+        )
+
+    return jsonify({
+        "ano": ano,
+        "variavel": variavel,
+        "estacoes_disponiveis": sorted(estacoes_pedidas),
+        "total_dias": len(datas),
+        "cobertura": contagem_validos,
+        "dados": linhas,
+        "resumo": resumo,
+        "avisos": avisos,
+    })
+
+
+@app.route("/api/comparacao/mensal/<int:ano>/<variavel>")
+def comparacao_mensal(ano, variavel):
+    """
+    Retorna a agregação mensal das três estações para um ano.
+    Usado para a tabela mensal e para o relatório PDF.
+    """
+    from collections import defaultdict
+
+    variavel = variavel.lower().strip()
+    if variavel not in ("tmax", "tmin"):
+        return jsonify({"erro": "Variável deve ser 'tmax' ou 'tmin'"}), 400
+
+    estacoes_param = request.args.get("estacoes", "").strip().lower()
+    if estacoes_param:
+        estacoes_pedidas = set(e.strip() for e in estacoes_param.split(",") if e.strip())
+    else:
+        estacoes_pedidas = {"ufra", "82191", "a201"}
+
+    ufra = _carregar_ufra()
+    inmet_82191 = _carregar_inmet_82191()
+    a201 = _carregar_inmet_a201()
+
+    prefixo = f"{ano}-"
+    por_mes = defaultdict(lambda: {"ufra": [], "82191": [], "a201": []})
+
+    for base, chave in [(ufra, "ufra"), (inmet_82191, "82191"), (a201, "a201")]:
+        if chave not in estacoes_pedidas:
+            continue
+        for data, d in base.items():
+            if not data.startswith(prefixo):
+                continue
+            mes = int(data[5:7])
+            v = d.get(variavel)
+            if v is not None:
+                por_mes[mes][chave].append(v)
+
+    resultado = []
+    for mes in range(1, 13):
+        linha = {"mes": mes}
+        for chave in ("ufra", "82191", "a201"):
+            vals = por_mes[mes][chave]
+            linha[chave] = round(sum(vals) / len(vals), 4) if vals else None
+            linha[f"n_{chave}"] = len(vals)
+
+        # Viés do mês entre pares (se ambos disponíveis)
+        u = linha.get("ufra")
+        v = linha.get("82191")
+        a = linha.get("a201")
+        linha["vies_ufra_82191"] = round(u - v, 4) if u is not None and v is not None else None
+        linha["vies_ufra_a201"]  = round(u - a, 4) if u is not None and a is not None else None
+        linha["vies_82191_a201"] = round(v - a, 4) if v is not None and a is not None else None
+
+        resultado.append(linha)
+
+    return jsonify({
+        "ano": ano,
+        "variavel": variavel,
+        "mensal": resultado,
+    })
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)

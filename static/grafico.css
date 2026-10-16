@@ -1,0 +1,301 @@
+/* ==========================================================
+   Dashboard de Comparação Tripla — estilos específicos
+   ========================================================== */
+
+.comp-main {
+    padding: 20px 30px;
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+/* ---------- Controles ---------- */
+.comp-controles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: center;
+    background: white;
+    padding: 16px 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    margin-bottom: 20px;
+}
+
+.comp-controle-grupo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.comp-controle-grupo label {
+    font-size: 13px;
+    color: #666;
+    font-weight: 500;
+}
+
+.comp-controle-grupo select {
+    padding: 8px 12px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    background: white;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.comp-controle-grupo select:hover {
+    border-color: #2e86c1;
+}
+
+.comp-estacoes {
+    gap: 12px;
+}
+
+.comp-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    background: #f0f6fc;
+    transition: background 0.2s;
+}
+
+.comp-checkbox:hover {
+    background: #e0eefa;
+}
+
+.comp-checkbox input {
+    cursor: pointer;
+    accent-color: #2e86c1;
+}
+
+.comp-checkbox span {
+    font-weight: 600;
+    color: #333;
+}
+
+.comp-btn-pdf {
+    background: #c0392b;
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 0.2s;
+}
+
+.comp-btn-pdf:hover {
+    background: #a93226;
+}
+
+/* ---------- Avisos ---------- */
+.comp-avisos {
+    background: #fff3cd;
+    border-left: 4px solid #f39c12;
+    color: #856404;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.comp-avisos ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.comp-avisos li {
+    margin-bottom: 4px;
+}
+
+/* ---------- Tabs ---------- */
+.comp-tabs {
+    display: flex;
+    gap: 4px;
+    background: white;
+    padding: 6px;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    margin-bottom: 20px;
+}
+
+.comp-tab {
+    flex: 1;
+    padding: 12px 20px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: #666;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+
+.comp-tab:hover {
+    background: #f0f6fc;
+    color: #2e86c1;
+}
+
+.comp-tab.active {
+    background: #2e86c1;
+    color: white;
+}
+
+.comp-tab i {
+    margin-right: 6px;
+}
+
+/* ---------- Painéis ---------- */
+.comp-conteudo {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    padding: 20px;
+    min-height: 500px;
+}
+
+.comp-painel {
+    display: none;
+}
+
+.comp-painel.active {
+    display: block;
+}
+
+/* ---------- Gráfico ---------- */
+.comp-grafico-wrapper {
+    position: relative;
+    height: 480px;
+    margin-bottom: 24px;
+}
+
+.comp-resumo-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.comp-card {
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 16px;
+    border-left: 4px solid #2e86c1;
+}
+
+.comp-card h4 {
+    font-size: 13px;
+    color: #1a5276;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.comp-card-linha {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    padding: 3px 0;
+    color: #555;
+}
+
+.comp-card-linha strong {
+    color: #333;
+}
+
+/* ---------- Tabelas ---------- */
+.comp-tabela-wrapper {
+    max-height: 600px;
+    overflow: auto;
+    border-radius: 8px;
+    border: 1px solid #eee;
+}
+
+.comp-tabela {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.comp-tabela thead {
+    position: sticky;
+    top: 0;
+    background: #1a3a5c;
+    color: white;
+    z-index: 10;
+}
+
+.comp-tabela th {
+    padding: 12px 14px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.comp-tabela td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #f0f0f0;
+    white-space: nowrap;
+}
+
+.comp-tabela tbody tr:hover {
+    background: #f0f6fc;
+}
+
+.comp-tabela-vazia {
+    text-align: center;
+    color: #999;
+    padding: 40px !important;
+    font-style: italic;
+}
+
+.comp-vies-positivo {
+    color: #c0392b;
+    font-weight: 600;
+}
+
+.comp-vies-negativo {
+    color: #2874a6;
+    font-weight: 600;
+}
+
+.comp-nulo {
+    color: #bbb;
+    font-style: italic;
+}
+
+/* ---------- Responsivo ---------- */
+@media (max-width: 768px) {
+    .comp-main {
+        padding: 12px;
+    }
+
+    .comp-controles {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .comp-controle-grupo {
+        justify-content: space-between;
+    }
+
+    .comp-tabs {
+        flex-direction: column;
+    }
+
+    .comp-grafico-wrapper {
+        height: 320px;
+    }
+
+}
